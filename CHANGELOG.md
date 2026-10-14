@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.0
+- Due dates that fall on a weekend or US federal holiday move to the next business day (for example the Q3 Oregon OQ is due Nov 2, 2026, not Oct 31).
+- Oregon OQ: prepaid boxes (3a, 3b, 8a, 20b) are flagged as "from your ledger – not verified", and you can type the real payment amounts from Revenue Online to replace them.
+- Form 132 rebuilt: one line per real employee (names cleaned and merged, agency and payment-ID payees ignored), with whole hours and UI wages marked "enter", and no TriMet column.
+- Form 940: the four quarters now add up exactly to line 12, a list shows every payment counted on line 13, and an unfinished current year is flagged as a snapshot.
+- Overview note: payments are matched to the oldest unpaid month first, so combined payments recorded without a program split can create false arrears; verify with the agency.
+
 ## 1.0.3
 - Form 940 shows a "what if state unemployment tax applied" comparison under the form.
 
