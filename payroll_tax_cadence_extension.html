@@ -125,6 +125,13 @@
 <div id="pane-or" class="pane">
   <div class="bar"><label class="f">Quarter <select id="qselor" style="min-width:90px"></select></label>
   <button id="copyor" class="sec">Copy figures</button><span id="cpmsgor" class="hint"></span></div>
+  <div class="bar" style="align-items:end">
+    <span class="hint" style="max-width:420px">Prepaid boxes come from your ledger, which is not proof of payment. Type the amounts from Revenue Online / your payment history to replace them (leave empty to use the ledger).</span>
+    <label class="f">3a withholding <input id="ovr3a" type="number" step="0.01" min="0" style="width:90px"></label>
+    <label class="f">3b statewide transit <input id="ovr3b" type="number" step="0.01" min="0" style="width:90px"></label>
+    <label class="f">8a TriMet <input id="ovr8a" type="number" step="0.01" min="0" style="width:90px"></label>
+    <label class="f">20b Paid Leave <input id="ovr20b" type="number" step="0.01" min="0" style="width:90px"></label>
+  </div>
   <div id="for"></div>
 </div>
 <div id="pane-940" class="pane">
@@ -276,7 +283,25 @@ const NOW = new Date();
 const TODAY = NOW.getFullYear() + '-' + String(NOW.getMonth()+1).padStart(2,'0') + '-' + String(NOW.getDate()).padStart(2,'0');
 const CURQ = Math.floor(NOW.getMonth()/3) + 1, CURY = NOW.getFullYear();
 const pad = n => String(n).padStart(2,'0');
-function dueDate(ym, rule){
+/* A due date that lands on a weekend or US federal holiday moves to the next business day. */
+function nthWeekday(y, m, wd, n){ const d = new Date(y, m, 1); let c = 0; while (true){ if (d.getDay() === wd && ++c === n) return d.getDate(); d.setDate(d.getDate() + 1); } }
+function lastMonday(y, m){ const d = new Date(y, m + 1, 0); while (d.getDay() !== 1) d.setDate(d.getDate() - 1); return d.getDate(); }
+function holidaysOf(y){
+  const fixed = [[0,1],[5,19],[6,4],[10,11],[11,25]].map(([m,d]) => { const x = new Date(y, m, d); if (x.getDay() === 6) x.setDate(d - 1); else if (x.getDay() === 0) x.setDate(d + 1); return x; });
+  const fl = [[0,1,3],[1,1,3],[8,1,1],[9,1,2],[10,4,4]].map(([m,wd,n]) => new Date(y, m, nthWeekday(y, m, wd, n)));
+  return fixed.concat(fl, [new Date(y, 4, lastMonday(y, 4))]).map(x => x.getFullYear() + '-' + pad(x.getMonth() + 1) + '-' + pad(x.getDate()));
+}
+function nextBusinessDay(iso){
+  const d = new Date(+iso.slice(0,4), +iso.slice(5,7) - 1, +iso.slice(8,10));
+  for (let i = 0; i < 10; i++){
+    const k = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    if (d.getDay() !== 0 && d.getDay() !== 6 && holidaysOf(d.getFullYear()).indexOf(k) < 0) return k;
+    d.setDate(d.getDate() + 1);
+  }
+  return iso;
+}
+function dueDate(ym, rule){ return nextBusinessDay(dueDateRaw(ym, rule)); }
+function dueDateRaw(ym, rule){
   const y = +ym.slice(0,4), mo = +ym.slice(5,7);
   if (rule === 'm15'){ let yy = y, mm = mo + 1; if (mm > 12){ mm = 1; yy++; } return yy + '-' + pad(mm) + '-15'; }
   if (rule === 'a') return (y + 1) + '-01-31';   /* annual: whole year due Jan 31 of the next year */
@@ -369,7 +394,7 @@ function renderOverview(){
   }
   h += '</tbody></table>';
   h += '<div class="legend"><span class="pill s-paid">✓ Paid</span><span class="pill s-up">… Unpaid, not yet due</span><span class="pill s-part">◐ Partly paid, not yet due</span><span class="pill s-late">! Overdue</span><span class="pill s-none">– No activity</span></div>';
-  h += '<p class="hint">Federal taxes (Social Security, Medicare, income tax withholding, OregonSaves) are due on the 15th of the following month. The Oregon taxes other than withholding are treated as due at the end of the month after each quarter (e.g. Q3 → Oct 31). Oregon withholding is remitted monthly, due on the 15th of the following month. FUTA is paid once a year, due Jan 31 of the following year (Form 940). Change these in your head if your deposit schedule differs – the totals don\'t change.</p>';
+  h += '<p class="hint">Federal taxes (Social Security, Medicare, income tax withholding, OregonSaves) are due on the 15th of the following month. The Oregon taxes other than withholding are treated as due at the end of the month after each quarter (e.g. Q3 → Oct 31). Oregon withholding is remitted monthly, due on the 15th of the following month. FUTA is paid once a year, due Jan 31 of the following year (Form 940). Due dates that fall on a weekend or federal holiday move to the next business day. Payments are matched to the oldest unpaid month first, so a combined payment that was recorded without a split by program can make older months look unpaid – check old arrears against your agency payment history before acting on them. Change these in your head if your deposit schedule differs – the totals don\'t change.</p>';
   $('pane-ov').innerHTML = h;
   document.querySelectorAll('.tc[data-tax]').forEach(el => el.onclick = () => { showPane('det'); const t = document.getElementById('sec-' + el.dataset.tax); if (t) t.scrollIntoView(); });
 }
@@ -497,7 +522,7 @@ function copy941(){
 function calc940(year){
   const fu = MODEL.taxes.futa; const s = sumMonths(fu, year);
   const wageAcct = Object.keys(MODEL.byAccount).find(n => /^salary and wages$/i.test(n));
-  let wages = null, l5 = null, l7 = null, qTax = [0,0,0,0], emps = 0;
+  let wages = null, l5 = null, l7 = null, qTax = [0,0,0,0], qTaxable = [0,0,0,0], emps = 0, lastWage = '';
   if (wageAcct){
     const tx = (MODEL.byAccount[wageAcct] || []).filter(x => +x.date.slice(0,4) === year).slice().sort((x,y) => x.date < y.date ? -1 : x.date > y.date ? 1 : 0);
     const run = {}; wages = 0; l7 = 0;
@@ -507,15 +532,21 @@ function calc940(year){
       const q = Math.ceil(+x.date.slice(5,7) / 3) - 1;
       const before = run[emp] || 0; const after = before + amt; run[emp] = after;
       const tb = Math.max(0, Math.min(before, 7000)), ta = Math.max(0, Math.min(after, 7000));
-      l7 += (ta - tb); qTax[q] += (ta - tb) * 0.06; wages += amt;
+      l7 += (ta - tb); qTaxable[q] += (ta - tb); wages += amt; if (x.date > lastWage) lastWage = x.date;
     }
     wages = r2(wages); l7 = r2(l7); l5 = r2(Math.max(0, wages - l7)); emps = Object.keys(run).length;
-    qTax = qTax.map(r2);
+    /* quarterly liability by cumulative rounding, so the four quarters add up exactly to line 12 */
+    let cum = 0, prev = 0; for (let i = 0; i < 4; i++){ cum += qTaxable[i]; const c6 = r2(cum * 0.06); qTax[i] = r2(c6 - prev); prev = c6; }
+    const tgt = r2(r2(l7 * 0.006) + r2(l7 * 0.054)); const sumQ = r2(qTax[0] + qTax[1] + qTax[2] + qTax[3]);
+    if (Math.abs(tgt - sumQ) > 0.004){ let li = 3; for (let i = 3; i >= 0; i--) if (qTaxable[i] > 0){ li = i; break; } qTax[li] = r2(qTax[li] + tgt - sumQ); }
   }
   const l8 = l7 == null ? null : r2(l7 * 0.006);
   const l9 = l7 == null ? null : r2(l7 * 0.054);   /* all wages excluded from state UI: no credit, so +5.4% */
   const l12 = l7 == null ? s.acc : r2(l8 + l9), l13 = s.applied;
-  return { year, wages, wageAcct, l7, l5, l8, l9, l12, l13, emps, ledgerAcc: s.acc, l14: r2(Math.max(0, l12 - l13)), l15: r2(Math.max(0, l13 - l12)), qs: wageAcct ? qTax : [1,2,3,4].map(q => sumMonths(fu, year, [q]).acc), has: fu.names.length > 0, due: (year + 1) + '-01-31' };
+  // A payment counts toward the year named in its memo (for example "FUTA 2023"); with no year in the memo it counts toward the year it was paid.
+  const payYear = x => { const m = String(x.desc || '').split(' — ').slice(2).join(' ').match(/\b(20\d\d)\b/); return m ? +m[1] : +x.date.slice(0,4); };
+  const deposits = orTxs('futa').filter(x => x.deb > 0.004 && payYear(x) === year).map(x => ({ date: x.date, payee: payeeOf(x), desc: String(x.desc || '').split(' — ').slice(2).join(' — '), amt: r2(x.deb) }));
+  return { year, wages, wageAcct, lastWage, deposits, l7, l5, l8, l9, l12, l13, emps, ledgerAcc: s.acc, l14: r2(Math.max(0, l12 - l13)), l15: r2(Math.max(0, l13 - l12)), qs: wageAcct ? qTax : [1,2,3,4].map(q => sumMonths(fu, year, [q]).acc), has: fu.names.length > 0, due: (year + 1) + '-01-31' };
 }
 function renderForm940(){
   if (!MODEL){ $('f940').innerHTML = '<p class="hint">Load a report first.</p>'; return; }
@@ -545,7 +576,12 @@ function renderForm940(){
   const tot = r2(c.qs[0] + c.qs[1] + c.qs[2] + c.qs[3]);
   h += ln('17', '<b>Total tax liability for the year</b> (must equal line 12)', mf(tot), Math.abs(tot - c.l12) < 0.005 ? 'ok' : 'bad');
   h += '</div>';
+  if (c.deposits.length){
+    h += '<h2>Payments counted toward line 13 (' + y + ')</h2><table class="d"><tr><th>Date</th><th>Paid to</th><th>Memo</th><th>Amount</th></tr>' + c.deposits.map(d => '<tr><td>' + esc(d.date) + '</td><td>' + esc(d.payee) + '</td><td>' + esc(d.desc) + '</td><td>' + mf(d.amt) + '</td></tr>').join('') + '</table>';
+  }
   const chk = [];
+  if (y === CURY && c.lastWage) chk.push(['s-part', y + ' is not finished: wages are counted through the ' + c.lastWage + ' pay date. Lines 3, 7, 12 and 14 and the last quarter will grow with later pay dates, so this is a snapshot, not the final return.']);
+  if (c.deposits.length) chk.push(['s-none', 'Check every payment listed above is really a FUTA payment (for example an EFTPS payment labelled FUTA). A payment booked to the FUTA account by mistake lowers your balance due.']);
   chk.push([c.l14 > 0.004 ? 's-part' : 's-paid', c.l14 > 0.004 ? 'Balance due of ' + mf(c.l14) + ' for ' + y + ', due ' + c.due + '.' : 'FUTA for ' + y + ' is covered by deposits.']);
   chk.push([Math.abs(tot - c.l12) < 0.005 ? 's-paid' : 's-late', 'Quarterly liabilities (' + mf(tot) + ') ' + (Math.abs(tot - c.l12) < 0.005 ? 'equal' : 'do NOT equal') + ' line 12 (' + mf(c.l12) + ').']);
   if (Math.abs(c.ledgerAcc - c.l12) > 1) chk.push(['s-part', 'Your FUTA payable account has accrued ' + mf(c.ledgerAcc) + ' for ' + y + ' versus ' + mf(c.l12) + ' calculated from wages (6.0% of taxable wages). Line 12 uses the calculated figure; the difference is ' + mf(r2(c.ledgerAcc - c.l12)) + '.']);
@@ -575,18 +611,22 @@ function calcOQ(y, q){
   const T = MODEL.taxes; const g = id => (T[id] && T[id].names.length) ? sumMonths(T[id], y, [q]) : { acc:0, applied:0, unpaid:0, none:true };
   const wageAcct = Object.keys(MODEL.byAccount).find(n => /^salary and wages$/i.test(n));
   const wages = wageAcct ? wagesIn(MODEL.byAccount[wageAcct], y, q) : null;
-  const wh = g('orwh'), st = g('stt'), tm = g('tm'), pl = g('pl');
+  const wh = Object.assign({}, g('orwh')), st = Object.assign({}, g('stt')), tm = Object.assign({}, g('tm')), pl = Object.assign({}, g('pl'));
+  const ovr = {}; [['3a', wh], ['3b', st], ['8a', tm], ['20b', pl]].forEach(([k, o]) => { const el = $('ovr' + k); const v = el && el.value !== '' ? parseFloat(el.value) : NaN; o.ledgerApplied = o.applied; if (!isNaN(v)){ o.applied = r2(v); o.entered = true; ovr[k] = true; } });
   const tmRate = TRIMET_RATE[y] || null;
   const tm7 = (tmRate && wages != null) ? Math.floor(wages * tmRate * 100 + 1e-6) / 100 : tm.acc;   /* box 7a rounds down */
   const a4 = r2(Math.max(0, wh.acc - wh.applied)), b4 = r2(Math.max(0, st.acc - st.applied)), a9 = r2(Math.max(0, tm7 - tm.applied));
   const b22 = r2(Math.max(0, pl.acc - pl.applied));
   const box10 = r2(a4 + b4 + a9);
-  /* Form 132: per employee */
+  /* Form 132: one line per real employee. Payee names are cleaned (leading ID numbers removed) and merged; numeric-only or empty names and zero amounts are ignored. */
   const emp = {};
-  const add = (name, k, v) => { (emp[name] = emp[name] || { wages:0, wh:0, stt:0, tm:0, pl:0 })[k] += v; };
-  if (wageAcct) for (const x of MODEL.byAccount[wageAcct]) if (inQtr(x, y, q)) add(payeeOf(x), 'wages', x.deb - x.cre);
-  [['orwh','wh'],['stt','stt'],['tm','tm'],['pl','pl']].forEach(([id, k]) => orTxs(id).forEach(x => { if (inQtr(x, y, q)) add(payeeOf(x), k, x.cre); }));
-  return { y, q, wages, wageAcct, wh, st, tm, tmRate, tm7, pl, a4, b4, a9, b22, box10, total: r2(box10 + b22), emp,
+  const nameOf = x => { const n = payeeOf(x).replace(/^\s*\d+\s*[-–:]\s*/, '').replace(/\s+/g, ' ').trim(); return /^\d*$/.test(n) ? '' : n; };
+  /* only people who appear as a payee on the wage account count as employees; agencies, payment IDs and refunds never become Form 132 lines */
+  const empKeys = {}; if (wageAcct) for (const x of MODEL.byAccount[wageAcct]){ const n = nameOf(x); if (n) empKeys[n.toLowerCase()] = true; }
+  const add = (x, k, v) => { if (Math.abs(v) < 0.005) return; const n = nameOf(x); if (!n || !empKeys[n.toLowerCase()]) return; const key = n.toLowerCase(); (emp[key] = emp[key] || { name: n, wages:0, wh:0, stt:0, pl:0 })[k] += v; };
+  if (wageAcct) for (const x of MODEL.byAccount[wageAcct]) if (inQtr(x, y, q)) add(x, 'wages', x.deb - x.cre);
+  [['orwh','wh'],['stt','stt'],['pl','pl']].forEach(([id, k]) => orTxs(id).forEach(x => { if (inQtr(x, y, q)) add(x, k, x.cre); }));
+  return { y, q, wages, wageAcct, wh, st, tm, tmRate, tm7, ovr, pl, a4, b4, a9, b22, box10, total: r2(box10 + b22), emp,
            due: dueDate(y + '-' + pad(q * 3), 'q'), has: !!(wh.acc || st.acc || tm.acc || pl.acc || (wages || 0)) };
 }
 function renderFormOQ(){
@@ -600,18 +640,18 @@ function renderFormOQ(){
   h += '<div class="part">State income tax withholding</div>';
   h += ln('1a', 'Subject wages', w, '', 'From your "Salary and Wages" account by pay date');
   h += ln('2a', 'Total tax withheld', mf(c.wh.acc), '', c.wh.none ? 'No Oregon withholding account found' : 'Oregon withholding accrued this quarter');
-  h += ln('3a', 'Prepaid tax this quarter', mf(c.wh.applied), '', 'Payments from your ledger applied to this quarter, oldest first');
+  h += ln('3a', 'Prepaid tax this quarter', mf(c.wh.applied), c.wh.entered ? '' : 'warn', c.wh.entered ? 'Entered by you (ledger shows ' + mf(c.wh.ledgerApplied) + ')' : 'From your ledger – NOT verified. Confirm in Revenue Online payment history.');
   h += ln('4a', 'Total due (2a – 3a)', mf(c.a4), c.a4 > 0.004 ? 'bad' : 'ok');
   h += '<div class="part">Statewide transit tax</div>';
   h += ln('1b', 'Subject wages', w);
   h += ln('2b', 'Total statewide transit tax withheld (0.1% of wages)', mf(c.st.acc), '', c.st.none ? 'No statewide transit account found' : 'Implied rate ' + rate(c.st.acc, c.wages));
-  h += ln('3b', 'Prepaid tax', mf(c.st.applied));
+  h += ln('3b', 'Prepaid tax', mf(c.st.applied), c.st.entered || c.st.applied < 0.005 ? '' : 'warn', c.st.entered ? 'Entered by you (ledger shows ' + mf(c.st.ledgerApplied) + ')' : (c.st.applied > 0.004 ? 'From your ledger – NOT verified' : ''));
   h += ln('4b', 'Total due (2b – 3b)', mf(c.b4), c.b4 > 0.004 ? 'bad' : 'ok');
   h += '<div class="part">TriMet transit district tax</div>';
   h += ln('5a', 'Subject wages (TriMet district)', w, '', 'Assumes all wages are earned in the TriMet district');
   h += ln('6a', 'Tax rate', c.tmRate ? c.tmRate.toFixed(6) : rate(c.tm.acc, c.wages), '', c.tmRate ? 'TriMet rate for ' + y + ' (from the DOR booklet)' : 'No official rate for ' + y + ' in the TRIMET_RATE table – showing ledger tax ÷ wages as a stand-in. Add the year\'s rate to the table.');
   h += ln('7a', 'Tax amount (5a × 6a)', mf(c.tm7), '', c.tm.none ? 'No TriMet account found' : 'Wages × rate, rounded down to the cent. Your ledger accrued ' + mf(c.tm.acc) + '.');
-  h += ln('8a', 'Prepaid tax', mf(c.tm.applied));
+  h += ln('8a', 'Prepaid tax', mf(c.tm.applied), c.tm.entered || c.tm.applied < 0.005 ? '' : 'warn', c.tm.entered ? 'Entered by you (ledger shows ' + mf(c.tm.ledgerApplied) + ')' : (c.tm.applied > 0.004 ? 'From your ledger – NOT verified' : ''));
   h += ln('9a', 'Total due (7a – 8a)', mf(c.a9), c.a9 > 0.004 ? 'bad' : 'ok');
   h += ln('5b–9b', 'Lane Transit District', mf(0), '', 'Not applicable unless you have employees working in the Lane district');
   h += ln('10', '<b>Subtotal</b> (4a + 4b + 9a + 9b)', mf(c.box10), c.box10 > 0.004 ? 'bad' : 'ok', 'Withholding and transit due to the Department of Revenue');
@@ -623,7 +663,7 @@ function renderFormOQ(){
   h += ln('15b', 'Taxable wages (13b – 14b)', w);
   h += ln('16b', 'Contribution rate', rate(c.pl.acc, c.wages), '', 'Implied from your ledger. The statutory total is 1.0% of wages; employers with fewer than 25 employees pay the employee share only (0.6%) because the employer match is 0.00.');
   h += ln('19b', 'Total contributions (17 + 18)', mf(c.pl.acc), '', c.pl.none ? 'No Paid Leave account found' : 'As accrued in your ledger. If you only remit the employee share, enter the full amount as the employee share and 0.00 as the employer share on the real form.');
-  h += ln('20b', 'Prepaid contributions', mf(c.pl.applied));
+  h += ln('20b', 'Prepaid contributions', mf(c.pl.applied), c.pl.entered || c.pl.applied < 0.005 ? '' : 'warn', c.pl.entered ? 'Entered by you (ledger shows ' + mf(c.pl.ledgerApplied) + ')' : (c.pl.applied > 0.004 ? 'From your ledger – NOT verified' : ''));
   h += ln('22b', 'Total due (19b – 20b + penalties/interest)', mf(c.b22), c.b22 > 0.004 ? 'bad' : 'ok', 'Penalties and interest (21b) not included');
   h += '<div class="part">Workers\' Benefit Fund</div>';
   h += ln('27–31', 'Whole hours worked, assessment rate, total WBF due', '—', 'warn', man + ' (no WBF payable account exists). If you are exempt from the Workers\' Benefit Fund (for example, owners/partners), enter the exempt answer on the real form.');
@@ -631,20 +671,22 @@ function renderFormOQ(){
   h += '</div>';
   /* Form 132 */
   const names = Object.keys(c.emp).sort();
-  h += '<h2>Form 132 – employee detail for Q' + q + ' ' + y + '</h2><p class="hint">Accompanies Form OQ: one line per employee. Social security numbers and hours worked are not in your ledger – add them on the real form.</p>';
-  h += '<table class="d"><tr><th>Employee</th><th>Wages</th><th>OR withheld</th><th>Statewide transit</th><th>TriMet</th><th>Paid Leave</th></tr>';
-  const tot = { wages:0, wh:0, stt:0, tm:0, pl:0 };
-  for (const n of names){ const e = c.emp[n]; for (const k in tot) tot[k] += e[k]; h += '<tr><td>' + esc(n) + '</td><td>' + mf(r2(e.wages)) + '</td><td>' + mf(r2(e.wh)) + '</td><td>' + mf(r2(e.stt)) + '</td><td>' + mf(r2(e.tm)) + '</td><td>' + mf(r2(e.pl)) + '</td></tr>'; }
-  if (!names.length) h += '<tr><td colspan="6">No wages or Oregon taxes found for this quarter.</td></tr>';
-  else h += '<tr class="q"><td>Total</td><td>' + mf(r2(tot.wages)) + '</td><td>' + mf(r2(tot.wh)) + '</td><td>' + mf(r2(tot.stt)) + '</td><td>' + mf(r2(tot.tm)) + '</td><td>' + mf(r2(tot.pl)) + '</td></tr>';
+  h += '<h2>Form 132 – employee detail for Q' + q + ' ' + y + '</h2><p class="hint">Accompanies Form OQ: one line per employee. Social security numbers and whole hours worked are not in your ledger – add them on the real form. UI wages are zero if you are exempt from Oregon unemployment insurance.</p>';
+  h += '<table class="d"><tr><th>Employee</th><th>Whole hours</th><th>OR withholding</th><th>Statewide transit wages</th><th>Statewide transit withheld</th><th>UI wages</th><th>Paid Leave wages</th></tr>';
+  const tot = { wages:0, wh:0, stt:0, pl:0 };
+  for (const n of names){ const e = c.emp[n]; for (const k in tot) tot[k] += e[k]; h += '<tr><td>' + esc(e.name) + '</td><td>enter</td><td>' + mf(r2(e.wh)) + '</td><td>' + mf(r2(e.wages)) + '</td><td>' + mf(r2(e.stt)) + '</td><td>enter</td><td>' + mf(r2(e.wages)) + '</td></tr>'; }
+  if (!names.length) h += '<tr><td colspan="7">No wages or Oregon taxes found for this quarter.</td></tr>';
+  else h += '<tr class="q"><td>Total</td><td></td><td>' + mf(r2(tot.wh)) + '</td><td>' + mf(r2(tot.wages)) + '</td><td>' + mf(r2(tot.stt)) + '</td><td></td><td>' + mf(r2(tot.wages)) + '</td></tr>';
   h += '</table>';
   const chk = [];
   chk.push([c.total > 0.004 ? 's-part' : 's-paid', c.total > 0.004 ? 'Oregon amount due for Q' + q + ' ' + y + ' (before UI and WBF): ' + mf(c.total) + ', due ' + c.due + '.' : 'Withholding, transit and Paid Leave for Q' + q + ' ' + y + ' are covered by payments.']);
-  if (names.length && (Math.abs(tot.wh - c.wh.acc) > 0.01 || Math.abs(tot.pl - c.pl.acc) > 0.01)) chk.push(['s-late', 'Employee lines do not add up to the account totals – some entries have no employee name.']);
-  if (c.tmRate && Math.abs(c.tm7 - c.tm.acc) > 0.004) chk.push(['s-part', 'TriMet: wages × rate gives ' + mf(c.tm7) + ' but your ledger accrued ' + mf(c.tm.acc) + ' (difference ' + mf(r2(c.tm.acc - c.tm7)) + '). The form uses the calculated amount.']);
-  chk.push(['s-none', 'Prepaid boxes count every payment applied to this quarter so far (oldest unpaid first). Check dates if you pay after the filing deadline.']);
+  if (names.length && (Math.abs(tot.wh - c.wh.acc) > 0.01 || Math.abs(tot.stt - c.st.acc) > 0.01)) chk.push(['s-late', 'Employee lines do not add up to the account totals – some entries have no usable employee name. Do not file Form 132 from this table until they match.']);
+  if (c.tmRate && Math.abs(c.tm7 - c.tm.acc) > 0.004) chk.push(['s-part', 'TriMet: wages × rate gives ' + mf(c.tm7) + ' but your ledger accrued ' + mf(c.tm.acc) + ' (difference ' + mf(r2(c.tm.acc - c.tm7)) + '). The form uses the calculated amount. A one-cent gap is normal: payroll rounds each payslip to the nearest cent, but the form rounds the quarter total down. Book the cent to expense, not to the payable.']);
+  const unver = ['wh','st','tm','pl'].filter(k => !c[k].entered && c[k].applied > 0.004);
+  if (unver.length) chk.push(['s-part', 'Prepaid amounts in boxes ' + unver.map(k => ({wh:'3a',st:'3b',tm:'8a',pl:'20b'})[k]).join(', ') + ' come from your ledger, not from the agency. Enter the real payment amounts above before relying on the totals.']);
+  chk.push(['s-none', 'Ledger prepaid amounts count every payment applied to this quarter so far (oldest unpaid first), including payments recorded without a split by program.']);
   h += '<ul class="checks" style="list-style:none;padding:0">' + chk.map(x => '<li><span class="pill ' + x[0] + '">' + esc(x[1]) + '</span></li>').join('') + '</ul>';
-  h += '<p class="hint">On-screen worksheet for transcribing figures – not a filing. Form OQ is due the last day of the month after the quarter. Box numbers follow the 2024 form; the 2026 form may differ slightly. Employer info and signatures are not included.</p>';
+  h += '<p class="hint">On-screen worksheet for transcribing figures – not a filing. Form OQ is due the last day of the month after the quarter (the next business day if that is a weekend or holiday). Box numbers follow the 2024 form; the 2026 form may differ slightly. Employer info and signatures are not included.</p>';
   $('for').innerHTML = h; MODEL.lastOQ = c;
 }
 function copyOQ(){
@@ -738,7 +780,8 @@ $('refresh').onclick = loadList;
 (function(){ const ys = $('yr'); let o = ''; for (let y = CURY; y >= 2024; y--) o += '<option value="' + y + '">' + y + '</option>'; ys.innerHTML = o; ys.value = String(CURY); })();
 $('yr').addEventListener('change', () => { if (MODEL) { renderOverview(); renderDetail(); } });
 $('qsel').addEventListener('change', renderForm941);
-$('qselor').addEventListener('change', renderFormOQ);
+$('qselor').addEventListener('change', () => { ['3a','3b','8a','20b'].forEach(k => { $('ovr' + k).value = ''; }); renderFormOQ(); });
+['3a','3b','8a','20b'].forEach(k => $('ovr' + k).addEventListener('input', renderFormOQ));
 $('copyor').onclick = copyOQ;
 $('copy941').onclick = copy941;
 $('ysel940').addEventListener('change', renderForm940);
