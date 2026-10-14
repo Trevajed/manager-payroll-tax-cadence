@@ -1,6 +1,6 @@
 # 💰 Payroll Tax Cadence — a Manager.io extension
 
-![version](https://img.shields.io/badge/version-1.0.3-blue) ![platform](https://img.shields.io/badge/platform-Manager.io-orange) ![type](https://img.shields.io/badge/type-Single%20HTML%20File-brightgreen) ![license](https://img.shields.io/badge/license-MIT-lightgrey)
+![version](https://img.shields.io/badge/version-1.1.0-blue) ![platform](https://img.shields.io/badge/platform-Manager.io-orange) ![type](https://img.shields.io/badge/type-Single%20HTML%20File-brightgreen) ![license](https://img.shields.io/badge/license-MIT-lightgrey)
 
 A **read-only** extension for [Manager.io](https://www.manager.io) that shows, for each payroll tax, what you have **accrued, paid and still owe** by month, quarter and year, colour-coded so late items stand out. It also fills **on-screen worksheets** of the federal and Oregon payroll forms from your ledger figures.
 
@@ -24,6 +24,8 @@ A **read-only** extension for [Manager.io](https://www.manager.io) that shows, f
 - 🇺🇸 **Form 941 (federal, quarterly)**, including fractions-of-cents reconciliation and monthly liability.
 - 🏛️ **Form 940 (FUTA, annual)**: 6.0% with no state credit (line 8 at 0.6% plus line 9 at 5.4%) when no state unemployment tax is paid.
 - 🌲 **Oregon Form OQ + Form 132**: withholding, statewide transit, TriMet and Paid Leave Oregon, with per-employee detail. Unemployment insurance and Workers' Benefit Fund are left for manual entry.
+- 🗓️ **Business-day due dates**: a due date on a weekend or federal holiday moves to the next business day.
+- ✍️ **Prepaid override** on the Oregon tab: type the payment amounts from the agency instead of trusting the ledger.
 - 🔒 Nothing is written to your books, except the optional button that creates the saved report described below.
 
 ## ⚙️ How it works
@@ -72,6 +74,9 @@ Everything lives in `payroll_tax_cadence_extension.html`.
 
 - ⚠️ Oregon unemployment insurance and Workers' Benefit Fund have no ledger source, so they are manual.
 - ⚠️ Form 941 line 3 (federal income tax withheld) needs its own payable account, otherwise it shows $0.00.
+- ⚠️ Prepaid amounts on Form OQ come from your ledger, which is not proof of payment. Check them against Revenue Online (or type them in) before filing.
+- ⚠️ Form 132 has no social security numbers or hours worked; add them on the real form.
+- ⚠️ Payments are matched to the oldest unpaid month first, so a combined payment recorded without a split by program can create false arrears.
 - ⚠️ The TriMet worksheet assumes all wages are earned inside the district.
 
 ## 🗺️ Roadmap
@@ -87,6 +92,7 @@ Planned additions, limited to what applies to **Oregon payroll**. Nothing here h
 - [ ] 🍼 **Paid Leave Oregon**: employer share for employers with 25 or more employees, and the annual wage cap (boxes 14b, 17, 18).
 - [ ] 🗓️ **Oregon withholding deposit schedules**: monthly, quarterly and semi-weekly depositors.
 - [ ] 📑 **Annual Oregon filings**: the withholding reconciliation (OR-WR) and the Form 132 hours column.
+- [ ] 🗓️ **Agency-specific due dates**: state holidays and extensions, not only weekends and federal holidays.
 - [ ] 🔄 **Current-year form checks**: update the box numbers when the Department of Revenue and Employment Department change the forms.
 
 ### 🇺🇸 Federal
