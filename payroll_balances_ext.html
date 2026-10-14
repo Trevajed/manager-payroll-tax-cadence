@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Payroll Account Balances</title>
+<style>
+  :root{--bg:#fbfaf7;--ink:#1c2430;--soft:#5a6472;--rule:#dcd8cf;--accent:#1f6f4a;--warn:#8a4a12;--card:#fff}
+  *{box-sizing:border-box}
+  body{margin:0;padding:18px 20px 36px;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,"Segoe UI",Roboto,Arial,sans-serif}
+  h1{font-size:19px;margin:0 0 4px}
+  .sub{color:var(--soft);font-size:12.5px;margin:0 0 14px}
+  .bar{display:flex;gap:12px;align-items:end;flex-wrap:wrap;margin:10px 0}
+  label.f{display:flex;flex-direction:column;gap:4px;font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--soft)}
+  select,button{font:inherit;padding:6px 9px;border-radius:6px;border:1px solid var(--rule);background:var(--card);color:var(--ink)}
+  select{min-width:340px}
+  button{background:var(--accent);border-color:var(--accent);color:#fff;cursor:pointer}
+  button.sec{background:var(--card);color:var(--accent)}
+  #status{font-size:12.5px;color:var(--soft);min-height:1.2em}
+  #status.err{color:var(--warn)}
+  .box{border:1px solid var(--rule);background:var(--card);border-radius:6px;padding:10px 12px;margin:12px 0}
+  .hint{color:var(--soft);font-size:12.5px;margin:6px 0 0}
+  table{border-collapse:collapse;width:100%;background:var(--card);margin-top:10px}
+  th,td{padding:7px 10px;border-bottom:1px solid var(--rule);text-align:right;font-variant-numeric:tabular-nums}
+  th:first-child,td:first-child{text-align:left}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--soft);border-bottom:1.5px solid var(--ink)}
+  tr.g th{border-bottom:none;padding-top:16px;color:var(--accent);text-align:left;font-size:12px}
+  tr.t td{font-weight:600;border-top:1.5px solid var(--ink);border-bottom:none}
+  td.neg{color:var(--warn)}
+  #list{display:flex;flex-wrap:wrap;gap:4px 18px}
+  #list label{display:inline-flex;gap:6px;align-items:center;font-size:13.5px}
+  pre{max-height:260px;overflow:auto;font-size:11.5px;background:var(--bg);border:1px solid var(--rule);border-radius:6px;padding:8px}
+  summary{cursor:pointer;color:var(--soft);font-size:13px}
+</style>
+</head>
+<body>
+<h1>Payroll Account Balances</h1>
+<p class="sub">Read-only. Pick a saved General Ledger Summary (its dates set the period) and see your payroll account balances.</p>
+
+<div class="bar">
+  <label class="f">Saved General Ledger Summary
+    <select id="rep"><option value="">Loading…</option></select>
+  </label>
+  <button id="go">Load balances</button>
+  <button id="refresh" class="sec">Refresh list</button>
+  <span id="status" role="status" aria-live="polite"></span>
+</div>
+<p class="hint">To use a different period, create a new <b>Reports → General Ledger Summary</b> with the dates you want, then click <b>Refresh list</b>.</p>
+
+<div id="results"></div>
+
+<div class="box" id="pickBox" hidden>
+  <b>Accounts included</b>
+  <div id="list" style="margin-top:8px"></div>
+  <p class="hint">Auto-selected: names containing "PR-" plus the Employee clearing account. Tick or untick freely.</p>
+</div>
+
+<details open><summary>Debug: raw responses</summary><pre id="raw">(nothing loaded yet)</pre></details>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const status = (t, err) => { const e = $('status'); e.textContent = t; e.className = err ? 'err' : ''; };
+const rawLog = {};
+function showRaw(){ try{ $('raw').textContent = JSON.stringify(rawLog, null, 2).slice(0, 60000); }catch(e){} }
+
+/* ---- Manager postMessage bridge ---- */
+function bridge(message){
+  return new Promise((resolve, reject) => {
+    const requestId = crypto.randomUUID();
+    const timer = setTimeout(() => { window.removeEventListener('message', on); reject(new Error('No reply from Manager (timed out). Open this from inside Manager.')); }, 30000);
+    function on(ev){
+      const d = ev.data;
+      if (d && typeof d.type === 'string' && d.type.endsWith('-response') && d.requestId === requestId){
+        clearTimeout(timer); window.removeEventListener('message', on); resolve(d.body);
+      }
+    }
+    window.addEventListener('message', on);
+    window.parent.postMessage(Object.assign({}, message, { requestId }), '*');
+  });
+}
+const apiGet = path => bridge({ type: 'api-request', method: 'GET', path });
+
+/* ---- parsing helpers ---- */
+function numFrom(cell){
+  if (cell == null) return null;
+  if (typeof cell.value === 'number') return cell.value;
+  const t = (typeof cell.text === 'string') ? cell.text : (typeof cell.value === 'string' ? cell.value : '');
+  if (!t.trim()) return null;
+  const neg = /\bCr\b/i.test(t) || /^\(.*\)$/.test(t.trim()) || /^-/.test(t.trim());
+  const n = Number(t.replace(/[^0-9.]/g, ''));
+  if (isNaN(n)) return null;
+  return neg ? -n : n;
+}
+function allStrings(o, out, depth){
+  out = out || []; depth = depth || 0;
+  if (o == null || depth > 4) return out;
+  if (typeof o === 'string'){ if (o.trim()) out.push(o.trim()); return out; }
+  if (Array.isArray(o)){ for (const x of o) allStrings(x, out, depth + 1); return out; }
+  if (typeof o === 'object'){ for (const k of Object.keys(o)){ if (/^(type|key|id|href|timestamp)$/i.test(k)) continue; allStrings(o[k], out, depth + 1); } }
+  return out;
+}
+function labelFromCell(cell){
+  const cands = allStrings(cell).filter(t => !/^[-+0-9.,()\sDrC$]+$/.test(t) && !/^https?:|^\/|^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(t));
+  cands.sort((a,b) => b.length - a.length);
+  return cands[0] || '';
+}
+function textOf(cell){
+  if (!cell) return '';
+  if (typeof cell.text === 'string' && cell.text.trim()) return cell.text.trim();
+  if (typeof cell.value === 'string' && cell.value.trim()) return cell.value.trim();
+  return '';
+}
+/* signed closing balance: debit positive, credit negative. Prefer the text (it carries Dr/Cr). */
+function signedFromCell(cell){
+  if (!cell) return 0;
+  const t = typeof cell.text === 'string' ? cell.text : '';
+  if (/\b(Dr|Cr)\b/i.test(t)){
+    const n = Number(t.replace(/[^0-9.]/g, '')) || 0;
+    return /\bCr\b/i.test(t) ? -n : n;
+  }
+  const v = numFrom(cell);
+  return v == null ? 0 : v;
+}
+function walk(rows, out, trail){
+  if (!rows || !Array.isArray(rows.items)) return out;
+  for (const r of rows.items){
+    const label = r.displayName || r.name || r.label || r.header || r.title || '';
+    if (Array.isArray(r.cells) && r.cells.length){ out.push({ row: r, group: trail.join(' > ') }); }
+    if (r.rows) walk(r.rows, out, label ? trail.concat(label) : trail);
+  }
+  return out;
+}
+function parseSummary(view){
+  const cols = (view && view.columns) || [];
+  const nCols = cols.length || 5;
+  const leaves = walk(view && view.rows, [], []);
+  const accounts = [];
+  for (const { row } of leaves){
+    const cells = row.cells;
+    let label = row.displayName || row.name || row.label || row.header || '';
+    if (!label) label = labelFromCell(cells[0]);
+    if (!label){ for (const c of cells){ const t = labelFromCell(c); if (t){ label = t; break; } } }
+    if (!label) continue;
+    const nums = cells.length > nCols ? cells.slice(cells.length - nCols) : cells;
+    const deb = numFrom(nums[1]) || 0, cre = Math.abs(numFrom(nums[2]) || 0);
+    const open = numFrom(nums[0]) || 0;
+    const closing = open + deb - cre;      /* + = debit balance, - = credit balance */
+    accounts.push({ name: label, debits: deb, credits: cre, closing: Math.round(closing * 100) / 100 });
+  }
+  return accounts;
+}
+const money = n => '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const isPayroll = n => /(^|\b)pr-/i.test(n) || /^employee clearing account/i.test(n);
+const isLiability = n => /payable|oregon\s*saves|employee clearing/i.test(n);
+
+/* ---- state ---- */
+let ACCTS = [], CHECK = {}, CLEARING = null;
+
+function render(){
+  const sel = ACCTS.filter(a => CHECK[a.name]);
+  const liab = sel.filter(a => isLiability(a.name)).sort((a,b)=>a.name.localeCompare(b.name));
+  const exp  = sel.filter(a => !isLiability(a.name)).sort((a,b)=>a.name.localeCompare(b.name));
+  let h = '<table><thead><tr><th>Account</th><th>Debits</th><th>Credits</th><th>Balance</th></tr></thead><tbody>';
+  if (CLEARING){
+    h += '<tr class="g"><th colspan="4">Payroll clearing (bank) account</th></tr>';
+    h += '<tr><td>' + esc(CLEARING.name) + '</td><td></td><td></td><td class="' + (CLEARING.bal < 0 ? 'neg' : '') + '">' + (CLEARING.bal < 0 ? '−' : '') + money(CLEARING.bal) + '</td></tr>';
+  }
+  if (liab.length){
+    h += '<tr class="g"><th colspan="4">Liabilities - amount owed (credits − debits)</th></tr>';
+    let t = 0;
+    for (const a of liab){ const owed = -a.closing; t += owed;
+      h += '<tr><td>' + esc(a.name) + '</td><td>' + money(a.debits) + '</td><td>' + money(a.credits) + '</td><td class="' + (owed < 0 ? 'neg' : '') + '">' + (owed < 0 ? '−' : '') + money(owed) + '</td></tr>'; }
+    h += '<tr class="t"><td>Net owed</td><td></td><td></td><td>' + (t < 0 ? '−' : '') + money(t) + '</td></tr>';
+  }
+  if (exp.length){
+    h += '<tr class="g"><th colspan="4">Expenses (debits − credits)</th></tr>';
+    let t = 0;
+    for (const a of exp){ const b = a.closing; t += b;
+      h += '<tr><td>' + esc(a.name) + '</td><td>' + money(a.debits) + '</td><td>' + money(a.credits) + '</td><td class="' + (b < 0 ? 'neg' : '') + '">' + (b < 0 ? '−' : '') + money(b) + '</td></tr>'; }
+    h += '<tr class="t"><td>Total expenses</td><td></td><td></td><td>' + (t < 0 ? '−' : '') + money(t) + '</td></tr>';
+  }
+  h += '</tbody></table>';
+  if (!sel.length && !CLEARING) h = '<p class="hint">No payroll accounts selected or found in this report. Zero-balance accounts are hidden by Manager when the report option "Exclude zero balances" is on.</p>';
+  $('results').innerHTML = h;
+}
+function renderPicker(){
+  const list = $('list'); list.innerHTML = '';
+  const names = ACCTS.map(a => a.name).sort((a,b) => (isPayroll(b)-isPayroll(a)) || a.localeCompare(b));
+  for (const n of names){
+    const lab = document.createElement('label');
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!CHECK[n];
+    cb.addEventListener('change', () => { CHECK[n] = cb.checked; render(); });
+    lab.appendChild(cb); lab.appendChild(document.createTextNode(n)); list.appendChild(lab);
+  }
+  $('pickBox').hidden = false;
+}
+
+/* ---- loading ---- */
+async function loadList(){
+  status('Loading saved reports…');
+  try{
+    const data = await apiGet('/api4/general-ledger-summary-batch?PageSize=100');
+    rawLog.reportList = data; showRaw();
+    const items = (data && (data.items || data)) || [];
+    const sel = $('rep'); sel.innerHTML = '';
+    const rows = items.map(x => ({ key: x.key || (x.item && x.item.key), d: x.item || x }))
+      .filter(x => x.key)
+      .sort((a,b) => String(b.d.toDate||'').localeCompare(String(a.d.toDate||'')) || String(a.d.fromDate||'').localeCompare(String(b.d.fromDate||'')));
+    if (!rows.length){ sel.innerHTML = '<option value="">(no saved summaries - create one in Reports)</option>'; status('No saved General Ledger Summaries found.', true); return; }
+    for (const r of rows){
+      const o = document.createElement('option'); o.value = r.key;
+      o.textContent = (r.d.description || 'General Ledger Summary') + '  [' + String(r.d.fromDate||'').slice(0,10) + ' → ' + String(r.d.toDate||'').slice(0,10) + ']';
+      sel.appendChild(o);
+    }
+    const pref = [...sel.options].find(o => /payroll/i.test(o.textContent));
+    if (pref) sel.value = pref.value;
+    status(rows.length + ' saved report(s).');
+  }catch(e){ status(e.message, true); }
+}
+async function loadBalances(){
+  const key = $('rep').value;
+  if (!key){ status('Pick a report first.', true); return; }
+  status('Loading balances…');
+  try{
+    const view = await apiGet('/api4/general-ledger-summary-view?Key=' + encodeURIComponent(key));
+    rawLog.view = { title: view && view.title, subtitle: view && view.subtitle, columns: view && view.columns && view.columns.map(c=>c.name), sampleRows: view && view.rows && view.rows.items && view.rows.items.slice(0,3) };
+    ACCTS = parseSummary(view);
+    try{ rawLog.firstLeafRows = walk(view && view.rows, [], []).slice(0, 8).map(x => x.row); rawLog.parsedCount = ACCTS.length; }catch(e){}
+    const prev = CHECK; CHECK = {};
+    for (const a of ACCTS) CHECK[a.name] = (a.name in prev) ? prev[a.name] : isPayroll(a.name);
+    /* clearing account is a bank account: read its balance separately (best effort) */
+    CLEARING = null;
+    try{
+      const banks = await apiGet('/api4/bank-or-cash-accounts?PageSize=100');
+      rawLog.banks = banks;
+      const arr = (banks && (banks.items || banks.bankOrCashAccounts)) || (Array.isArray(banks) ? banks : []);
+      for (const b of arr){
+        const it = b.item || b;
+        const nm = it.name || it.Name || '';
+        if (/payroll clearing/i.test(nm)){
+          const bal = it.actualBalance || it.clearedBalance || it.balance || it.Balance;
+          const v = bal && typeof bal === 'object' ? (bal.value != null ? bal.value : bal.Value) : bal;
+          if (typeof v === 'number') CLEARING = { name: nm, bal: v };
+        }
+      }
+    }catch(e){ rawLog.banksError = String(e.message || e); }
+    showRaw();
+    renderPicker(); render();
+    status((view && view.subtitle ? view.subtitle + ' · ' : '') + ACCTS.length + ' accounts in report.' + (CLEARING ? '' : ' (Clearing balance not found - see Debug.)'));
+  }catch(e){ status(e.message, true); }
+}
+$('go').addEventListener('click', loadBalances);
+$('refresh').addEventListener('click', loadList);
+loadList().then(() => { if ($('rep').value) loadBalances(); });
+</script>
+</body>
+</html>

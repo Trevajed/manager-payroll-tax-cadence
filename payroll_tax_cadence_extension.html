@@ -1,0 +1,750 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Payroll Tax Cadence</title>
+<style>
+  :root{
+    --bg:#f6f4ef;--ink:#1c2430;--soft:#5a6472;--rule:#dcd8cf;--card:#fff;--navy:#1d2f4a;
+    --ok:#1f7a4d;--okbg:#e1f2e8; --warn:#9a6200;--warnbg:#fff0c2; --up:#27589c;--upbg:#e2ecfa;
+    --bad:#b3261e;--badbg:#fde1de; --none:#8a929d;--nonebg:#eceae4;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:16px 20px 40px;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,"Segoe UI",Roboto,Arial,sans-serif}
+  header{display:flex;flex-wrap:wrap;align-items:end;gap:14px;margin-bottom:6px}
+  h1{font-size:20px;margin:0;color:var(--navy)}
+  .sub{color:var(--soft);font-size:12.5px;margin:2px 0 10px}
+  .bar{display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin:8px 0 4px}
+  label.f{display:flex;flex-direction:column;gap:3px;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--soft)}
+  select,button{font:inherit;padding:6px 9px;border-radius:7px;border:1px solid var(--rule);background:var(--card);color:var(--ink)}
+  select{min-width:240px}
+  #yr,#qsel{min-width:90px}
+  button{background:var(--navy);border-color:var(--navy);color:#fff;cursor:pointer}
+  button.sec{background:var(--card);color:var(--navy)}
+  #status{font-size:12.5px;color:var(--soft)}
+  #status.err{color:var(--bad)}
+  nav.tabs{display:flex;gap:4px;margin:14px 0 12px;border-bottom:2px solid var(--rule)}
+  nav.tabs button{background:transparent;color:var(--soft);border:none;border-bottom:3px solid transparent;border-radius:0;padding:8px 14px;margin-bottom:-2px;font-weight:600}
+  nav.tabs button.on{color:var(--navy);border-bottom-color:var(--navy)}
+  .pane{display:none}.pane.on{display:block}
+
+  /* status colours: always colour + symbol + word */
+  .s-paid{color:var(--ok);background:var(--okbg)} .s-part{color:var(--warn);background:var(--warnbg)}
+  .s-up{color:var(--up);background:var(--upbg)} .s-late{color:var(--bad);background:var(--badbg)} .s-none{color:var(--none);background:var(--nonebg)}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
+
+  /* attention box */
+  .attn{border:1px solid var(--rule);border-left:6px solid var(--ok);background:var(--card);border-radius:8px;padding:10px 14px;margin:6px 0 14px}
+  .attn.bad{border-left-color:var(--bad)} .attn.warn{border-left-color:var(--warn)}
+  .attn h3{margin:0 0 4px;font-size:14px}
+  .attn ul{margin:4px 0 0;padding-left:18px}
+  .attn li{margin:2px 0}
+
+  /* tax cards */
+  .group-h{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--soft);margin:16px 0 6px;font-weight:700}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}
+  .tc{border-radius:10px;padding:10px 12px;border:1px solid transparent;cursor:pointer}
+  .tc .t{font-size:12px;font-weight:700}
+  .tc .v{font-size:22px;font-weight:700;margin:2px 0 0}
+  .tc .s{font-size:12px;opacity:.9}
+  .tc.s-paid{border-color:#b7dcc6} .tc.s-part{border-color:#f0d78a} .tc.s-up{border-color:#bcd0ee} .tc.s-late{border-color:#f0b4ae} .tc.s-none{border-color:var(--rule)}
+
+  /* heat grid */
+  .heat{width:100%;border-collapse:separate;border-spacing:3px;margin-top:6px;background:transparent}
+  .heat th{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--soft);padding:2px 4px;border:none;text-align:center}
+  .heat th.q{border-bottom:2px solid var(--navy);color:var(--navy)}
+  .heat td{padding:6px 4px;text-align:center;border:none;border-radius:6px;font-size:12px;font-variant-numeric:tabular-nums}
+  .heat td.name{text-align:left;font-weight:600;background:transparent;white-space:nowrap;padding-right:10px}
+  .heat td.cell{min-width:70px;cursor:default}
+  .heat .sym{font-weight:800;margin-right:3px}
+  .legend{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 0;font-size:12px}
+
+  /* detail tables */
+  h2{font-size:15px;margin:24px 0 4px;color:var(--navy)}
+  .hint{color:var(--soft);font-size:12.5px;margin:4px 0}
+  table.d{border-collapse:collapse;width:100%;background:var(--card);margin-top:6px;border:1px solid var(--rule)}
+  table.d th,table.d td{padding:6px 10px;border-bottom:1px solid var(--rule);text-align:right;font-variant-numeric:tabular-nums}
+  table.d th:first-child,table.d td:first-child{text-align:left}
+  table.d th{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--soft);background:#faf9f5}
+  table.d tr.q td{font-weight:700;background:#f1efe8}
+  table.d tr.y td{font-weight:800;background:#e8edf5;border-top:2px solid var(--navy)}
+  table.d tr.cur td:first-child{border-left:4px solid var(--navy)}
+
+  /* Form 941 look-alike */
+  .form{background:#fff;border:2px solid #222;max-width:880px;margin:8px 0}
+  .form .fh{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #222;padding:8px 12px;background:#f2f2f2}
+  .form .fh b{font-size:18px}
+  .form .part{background:#222;color:#fff;padding:4px 12px;font-weight:700;font-size:13px}
+  .form .ln{display:grid;grid-template-columns:42px 1fr 150px 150px;align-items:center;border-bottom:1px solid #bbb;min-height:34px}
+  .form .ln.h{font-size:11px;color:#444;background:#fafafa;min-height:22px}
+  .form .ln > div{padding:5px 8px}
+  .form .no{font-weight:800;border-right:1px solid #bbb;text-align:center}
+  .form .amt{text-align:right;font-variant-numeric:tabular-nums;font-family:ui-monospace,Consolas,monospace;font-size:14px;background:#f4f8ff;border-left:1px solid #bbb}
+  .form .amt.c1{background:#fff}
+  .form .amt.warn{background:var(--warnbg)} .form .amt.bad{background:var(--badbg)} .form .amt.ok{background:var(--okbg)}
+  .form .sub2{font-size:11.5px;color:#555}
+  .checks{max-width:880px;margin:10px 0}
+  .checks li{margin:3px 0}
+  pre{max-height:240px;overflow:auto;font-size:11.5px;background:#fff;border:1px solid var(--rule);border-radius:6px;padding:8px}
+  summary{cursor:pointer;color:var(--soft);font-size:13px;margin-top:24px}
+  @media print{ .bar,nav.tabs,details,#status{display:none} body{background:#fff} .pane{display:none} #pane-941.on,#pane-940.on,#pane-or.on{display:block} }
+</style>
+</head>
+<body>
+<header><h1>Payroll Tax Cadence</h1></header>
+<p class="sub">Read-only. What you owe, what you've paid and what's late, from your General Ledger. Payments are applied to the oldest unpaid month first.</p>
+
+<div class="bar">
+  <label class="f">Saved General Ledger Transactions report
+    <select id="rep"><option value="">Loading…</option></select>
+  </label>
+  <label class="f">Year <select id="yr"></select></label>
+  <button id="go">Load</button>
+  <button id="refresh" class="sec">Refresh list</button>
+  <button id="mk" class="sec" hidden>Create the "Payroll cadence" report</button>
+  <span id="status" role="status" aria-live="polite"></span>
+</div>
+
+<nav class="tabs" id="tabs">
+  <button data-p="ov" class="on">Overview</button>
+  <button data-p="det">Month-by-month detail</button>
+  <button data-p="941">Form 941 (federal)</button>
+  <button data-p="940">Form 940 (FUTA)</button>
+  <button data-p="or">Oregon (OQ + 132)</button>
+</nav>
+
+<div id="pane-ov" class="pane on"></div>
+<div id="pane-det" class="pane"></div>
+<div id="pane-941" class="pane">
+  <div class="bar"><label class="f">Quarter <select id="qsel"></select></label>
+  <button id="copy941" class="sec">Copy figures</button><span id="cpmsg" class="hint"></span></div>
+  <div id="f941"></div>
+</div>
+
+<div id="pane-or" class="pane">
+  <div class="bar"><label class="f">Quarter <select id="qselor" style="min-width:90px"></select></label>
+  <button id="copyor" class="sec">Copy figures</button><span id="cpmsgor" class="hint"></span></div>
+  <div id="for"></div>
+</div>
+<div id="pane-940" class="pane">
+  <div class="bar"><label class="f">Year <select id="ysel940" style="min-width:90px"></select></label>
+  <button id="copy940" class="sec">Copy figures</button><span id="cpmsg940" class="hint"></span></div>
+  <div id="f940"></div>
+</div>
+
+<details><summary>Debug: raw responses</summary><pre id="raw">(nothing loaded yet)</pre></details>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const status = (t, err) => { const e = $('status'); e.textContent = t; e.className = err ? 'err' : ''; };
+const rawLog = {};
+function showRaw(){ try{ const o = Object.assign({}, rawLog); if (o.reportList) o.reportList = '(' + ((o.reportList.items||[]).length) + ' reports - omitted)'; $('raw').textContent = JSON.stringify(o, null, 2).slice(0, 20000); }catch(e){} }
+
+/* crypto.randomUUID only exists on https/localhost pages; the server edition is plain http, so fall back */
+function newId(){
+  try{ if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID(); }catch(e){}
+  try{ if (window.crypto && window.crypto.getRandomValues){ const b = new Uint8Array(16); window.crypto.getRandomValues(b); b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80; const h = Array.from(b, x => x.toString(16).padStart(2,'0')).join(''); return h.slice(0,8)+'-'+h.slice(8,12)+'-'+h.slice(12,16)+'-'+h.slice(16,20)+'-'+h.slice(20); } }catch(e){}
+  return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+}
+function bridge(message){
+  return new Promise((resolve, reject) => {
+    const requestId = newId();
+    const timer = setTimeout(() => { window.removeEventListener('message', on); reject(new Error('No reply from Manager (timed out). Open this from inside Manager desktop.')); }, 60000);
+    function on(ev){
+      const d = ev.data;
+      if (d && typeof d.type === 'string' && d.type.endsWith('-response') && d.requestId === requestId){
+        clearTimeout(timer); window.removeEventListener('message', on); resolve(d.body);
+      }
+    }
+    window.addEventListener('message', on);
+    window.parent.postMessage(Object.assign({}, message, { requestId }), '*');
+  });
+}
+const apiGet = path => bridge({ type: 'api-request', method: 'GET', path });
+const apiPost = (path, body) => bridge({ type: 'api-request', method: 'POST', path, body });
+
+/* ---------- parsing the General Ledger Transactions view ---------- */
+function numFrom(c){
+  if (c == null) return null;
+  if (typeof c.value === 'number') return c.value;
+  const t = typeof c.text === 'string' ? c.text : (typeof c.value === 'string' ? c.value : '');
+  if (!t.trim()) return null;
+  const n = Number(t.replace(/[^0-9.]/g, ''));
+  return isNaN(n) ? null : n;
+}
+/* signed: debit +, credit - (uses Dr/Cr in text when present) */
+function signedFrom(c){
+  if (c == null) return null;
+  const t = typeof c.text === 'string' ? c.text : '';
+  if (/\bCr\b/i.test(t)) return -(Number(t.replace(/[^0-9.]/g,'')) || 0);
+  if (/\bDr\b/i.test(t)) return  (Number(t.replace(/[^0-9.]/g,'')) || 0);
+  if (typeof c.value === 'number') return c.value;
+  return numFrom(c);
+}
+function strings(o, out, d){
+  out = out || []; d = d || 0;
+  if (o == null || d > 4) return out;
+  if (typeof o === 'string'){ out.push(o); return out; }
+  if (Array.isArray(o)){ o.forEach(x => strings(x, out, d+1)); return out; }
+  if (typeof o === 'object'){ for (const k of Object.keys(o)){ if (k === 'link' || k === 'key') continue; strings(o[k], out, d+1); } }
+  return out;
+}
+const DATE_RE = /(\d{4})-(\d{2})-(\d{2})/;
+function findDate(row){
+  const cands = [row.name, row.displayName].concat(strings(row.cells));
+  for (const s of cands){ if (typeof s !== 'string') continue; const m = s.match(DATE_RE); if (m) return m[1] + '-' + m[2] + '-' + m[3]; }
+  return null;
+}
+/* Real layout: view.rows = [ {name:'PR-Social Security Payable', rows:[ {name:'2024-01-05 — payee — memo', cells:[debit, credit, balance]} ... ]} ... ] */
+const kids = rs => Array.isArray(rs) ? rs : (rs && Array.isArray(rs.items) ? rs.items : []);
+function parseTxns(view){
+  const tx = [];
+  (function walk(rows, trail){
+    for (const r of kids(rows)){
+      const name = r.name || r.displayName || '';
+      const hasKids = kids(r.rows).length > 0;
+      if (!hasKids && Array.isArray(r.cells) && r.cells.length){
+        const date = findDate(r);
+        if (date){
+          const cs = r.cells, n = cs.length;
+          const deb = numFrom(cs[n-3]) || 0, cre = numFrom(cs[n-2]) || 0;
+          tx.push({ account: trail[trail.length-1] || '', date, deb, cre, bal: signedFrom(cs[n-1]), desc: name });
+        }
+      }
+      if (hasKids) walk(r.rows, name ? trail.concat(name) : trail);
+    }
+  })(view && view.rows, []);
+  return tx;
+}
+
+/* ---------- tax definitions ---------- */
+const PAYABLE = n => /payable/i.test(n);
+const TAXES = [
+  { id:'ss',   grp:'Federal', title:'Social Security',        due:'m15', test:n => /social\s*security/i.test(n) && PAYABLE(n) },
+  { id:'med',  grp:'Federal', title:'Medicare',               due:'m15', test:n => /medicare/i.test(n) && PAYABLE(n) },
+  { id:'fit',  grp:'Federal', title:'Federal income tax withholding', due:'m15', test:n => /federal/i.test(n) && /(withh|income)/i.test(n) && !/unemploy/i.test(n) && PAYABLE(n) },
+  { id:'futa', grp:'Federal', title:'FUTA (federal unemployment)',    due:'a',   test:n => /(futa|federal\s*unemploy)/i.test(n) && PAYABLE(n) },
+  { id:'orwh', grp:'Oregon',  title:'Oregon income tax withholding',  due:'m15',   test:n => /\bOR\b.*withh/i.test(n) && PAYABLE(n) },
+  { id:'stt',  grp:'Oregon',  title:'Statewide transit tax',  due:'q',   test:n => /statewide.*transit/i.test(n) },
+  { id:'tm',   grp:'Oregon',  title:'TriMet transit tax',     due:'q',   test:n => /trimet/i.test(n) },
+  { id:'pl',   grp:'Oregon',  title:'Paid Leave Oregon (family leave)', due:'q', test:n => /paid\s*leave/i.test(n) && PAYABLE(n) },
+  { id:'os',   grp:'Oregon',  title:'OregonSaves (employee retirement)', due:'m15', test:n => /oregon\s*saves/i.test(n) }
+];
+
+/* ---------- computation ---------- */
+const money = n => (Math.abs(n) < 0.005 ? '—' : (n < 0 ? '−' : '') + '$' + Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}));
+const mf = n => (n < 0 ? '−' : '') + '$' + Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const r2 = n => Math.round(n * 100) / 100;
+const mkey = d => d.slice(0,7);
+const F = ['acc','dep','applied','unpaid'];
+
+function computeAccount(txs){
+  txs = txs.slice().sort((a,b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+  const months = {}; let paid = 0;
+  for (const t of txs){
+    const k = mkey(t.date); const m = months[k] || (months[k] = { acc:0, dep:0, applied:0, unpaid:0 });
+    m.acc += t.cre; m.dep += t.deb; paid += t.deb;
+  }
+  let opening = 0;
+  if (txs.length && txs[0].bal != null){ opening = -(txs[0].bal - txs[0].deb + txs[0].cre); if (opening < 0) opening = 0; }
+  let pool = paid; const useOpen = Math.min(opening, pool); pool -= useOpen;
+  for (const k of Object.keys(months).sort()){ const m = months[k]; const a = Math.min(m.acc, pool); pool -= a; m.applied = r2(a); m.unpaid = r2(m.acc - a); m.acc = r2(m.acc); m.dep = r2(m.dep); }
+  return { months, openingOwed: r2(opening - useOpen), credit: r2(pool) };
+}
+function blank(){ return { names:[], months:{}, openingOwed:0, credit:0 }; }
+function addInto(out, c){
+  out.openingOwed = r2(out.openingOwed + c.openingOwed); out.credit = r2(out.credit + c.credit);
+  for (const k of Object.keys(c.months)){ const m = out.months[k] || (out.months[k] = { acc:0, dep:0, applied:0, unpaid:0 }); for (const f of F) m[f] = r2(m[f] + c.months[k][f]); }
+}
+function computeTax(tax, byAccount){
+  const out = blank(); out.names = Object.keys(byAccount).filter(tax.test);
+  for (const n of out.names) addInto(out, computeAccount(byAccount[n]));
+  Object.assign(out, { id:tax.id, title:tax.title, grp:tax.grp, due:tax.due });
+  return out;
+}
+function combine(list, id, title, grp, due){
+  const out = blank(); for (const x of list){ out.names = out.names.concat(x.names); addInto(out, x); }
+  return Object.assign(out, { id, title, grp, due });
+}
+
+/* ---------- dates / status ---------- */
+const MN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const NOW = new Date();
+const TODAY = NOW.getFullYear() + '-' + String(NOW.getMonth()+1).padStart(2,'0') + '-' + String(NOW.getDate()).padStart(2,'0');
+const CURQ = Math.floor(NOW.getMonth()/3) + 1, CURY = NOW.getFullYear();
+const pad = n => String(n).padStart(2,'0');
+function dueDate(ym, rule){
+  const y = +ym.slice(0,4), mo = +ym.slice(5,7);
+  if (rule === 'm15'){ let yy = y, mm = mo + 1; if (mm > 12){ mm = 1; yy++; } return yy + '-' + pad(mm) + '-15'; }
+  if (rule === 'a') return (y + 1) + '-01-31';   /* annual: whole year due Jan 31 of the next year */
+  /* quarterly: end of the month after the quarter closes */
+  const q = Math.ceil(mo/3); let yy = y, mm = q*3 + 1; if (mm > 12){ mm = 1; yy++; }
+  const last = new Date(yy, mm, 0).getDate(); return yy + '-' + pad(mm) + '-' + pad(last);
+}
+function daysBetween(a, b){ return Math.round((new Date(b) - new Date(a)) / 86400000); }
+const SYM = { paid:'✓', part:'◐', up:'…', late:'!', none:'–' };
+/* returns {k, label, due} */
+function statusOf(m, ym, rule){
+  if (!m || m.acc < 0.005) return { k:'none', label:'No activity', due:null };
+  const due = dueDate(ym, rule);
+  if (m.unpaid <= 0.004) return { k:'paid', label:'Paid', due };
+  const late = TODAY > due;
+  if (late) return { k:'late', label: (m.applied > 0.004 ? 'Partly paid – ' : 'Unpaid – ') + daysBetween(due, TODAY) + ' days late', due };
+  const soon = daysBetween(TODAY, due);
+  return { k: m.applied > 0.004 ? 'part' : 'up', label: (m.applied > 0.004 ? 'Partly paid, ' : 'Unpaid, ') + 'due in ' + soon + ' day' + (soon === 1 ? '' : 's'), due };
+}
+const RANK = { late:4, part:3, up:2, paid:1, none:0 };
+function overall(c){
+  let worst = 'none', owed = c.openingOwed, firstDue = null;
+  if (c.openingOwed > 0.004) worst = 'late';
+  for (const ym of Object.keys(c.months).sort()){
+    const m = c.months[ym]; const st = statusOf(m, ym, c.due); owed += m.unpaid;
+    if (RANK[st.k] > RANK[worst]) worst = st.k;
+    if (m.unpaid > 0.004 && st.due && (!firstDue || st.due < firstDue)) firstDue = st.due;
+  }
+  return { k: worst, owed: r2(owed), firstDue };
+}
+function sumMonths(c, year, qs){
+  const s = { acc:0, dep:0, applied:0, unpaid:0 };
+  for (let mo = 1; mo <= 12; mo++){
+    if (qs && qs.indexOf(Math.ceil(mo/3)) < 0) continue;
+    const m = c.months[year + '-' + pad(mo)]; if (!m) continue; for (const f of F) s[f] += m[f];
+  }
+  for (const f of F) s[f] = r2(s[f]); return s;
+}
+const pill = st => '<span class="pill s-' + st.k + '">' + SYM[st.k] + ' ' + esc(st.label) + '</span>';
+
+/* ---------- rendering: overview ---------- */
+let MODEL = null;
+function allTaxes(){ const T = MODEL.taxes; return TAXES.map(t => T[t.id]); }
+
+function renderOverview(){
+  const year = +$('yr').value; const list = allTaxes().filter(c => c.names.length);
+  /* attention list */
+  const items = [];
+  for (const c of list){
+    if (c.openingOwed > 0.004) items.push({ due:'0000', k:'late', text:c.title + ': ' + mf(c.openingOwed) + ' still owed from before this report starts' });
+    for (const ym of Object.keys(c.months).sort()){
+      const m = c.months[ym]; if (m.unpaid < 0.005) continue; const st = statusOf(m, ym, c.due);
+      if (st.k === 'late') items.push({ due:st.due, k:'late', text:c.title + ' – ' + MN[+ym.slice(5,7)-1] + ' ' + ym.slice(0,4) + ': ' + mf(m.unpaid) + ' ' + (m.applied > 0.004 ? 'still unpaid' : 'unpaid') + ', was due ' + st.due + ' (' + daysBetween(st.due, TODAY) + ' days late)' });
+      else if (daysBetween(TODAY, st.due) <= 30) items.push({ due:st.due, k:'part', text:c.title + ' – ' + MN[+ym.slice(5,7)-1] + ' ' + ym.slice(0,4) + ': ' + mf(m.unpaid) + ' due ' + st.due + ' (in ' + daysBetween(TODAY, st.due) + ' days)' });
+    }
+  }
+  items.sort((a,b) => a.due < b.due ? -1 : 1);
+  const late = items.filter(i => i.k === 'late'), soon = items.filter(i => i.k === 'part');
+  let h = '';
+  if (late.length) h += '<div class="attn bad"><h3>! ' + late.length + ' overdue item' + (late.length > 1 ? 's' : '') + ' need attention</h3><ul>' + late.map(i => '<li>' + esc(i.text) + '</li>').join('') + '</ul></div>';
+  if (soon.length) h += '<div class="attn warn"><h3>… Coming due in the next 30 days</h3><ul>' + soon.map(i => '<li>' + esc(i.text) + '</li>').join('') + '</ul></div>';
+  if (!late.length && !soon.length) h += '<div class="attn"><h3>✓ Nothing overdue or coming due in the next 30 days</h3></div>';
+
+  /* cards */
+  const card = c => { const o = overall(c); const sub = o.k === 'none' ? 'No activity' : (o.owed > 0.004 ? (o.firstDue ? 'oldest due ' + o.firstDue : 'owed') : 'all paid');
+    return '<div class="tc s-' + o.k + '" data-tax="' + c.id + '" title="Click to see the month-by-month detail"><div class="t">' + SYM[o.k] + ' ' + esc(c.title) + '</div><div class="v">' + (o.owed > 0.004 ? mf(o.owed) : '$0.00') + '</div><div class="s">' + esc(sub) + (c.credit > 0.004 ? ' · overpaid ' + mf(c.credit) : '') + '</div></div>'; };
+  const T = MODEL.taxes;
+  for (const grp of ['Federal', 'Oregon']){
+    const cs = TAXES.filter(t => t.grp === grp).map(t => T[t.id]);
+    h += '<div class="group-h">' + grp + ' – still owed</div><div class="cards">';
+    for (const c of cs){ if (!c.names.length) { h += '<div class="tc s-none"><div class="t">– ' + esc(c.title) + '</div><div class="v">n/a</div><div class="s">no payable account found</div></div>'; continue; }
+      h += card(c); if (c.id === 'med') h += card(MODEL.fica); }
+    h += '</div>';
+  }
+
+  /* heat grid */
+  h += '<div class="group-h">' + year + ' month by month (amount shown = still owed; ✓ = paid)</div>';
+  h += '<table class="heat"><thead><tr><th></th>' + [1,2,3,4].map(q => '<th class="q" colspan="3">Q' + q + '</th>').join('') + '</tr><tr><th></th>' + MN.map(m => '<th>' + m + '</th>').join('') + '</tr></thead><tbody>';
+  const rows = list.concat([MODEL.fica]).sort((a,b) => 0);
+  const order = ['ss','med','fica','fit','futa','orwh','stt','tm','pl','os'];
+  const byId = {}; list.forEach(c => byId[c.id] = c); byId.fica = MODEL.fica;
+  for (const id of order){ const c = byId[id]; if (!c || !c.names.length) continue;
+    h += '<tr><td class="name">' + esc(c.title) + '</td>';
+    for (let mo = 1; mo <= 12; mo++){
+      const ym = year + '-' + pad(mo); const m = c.months[ym]; const st = statusOf(m, ym, c.due);
+      let txt = SYM.none; if (st.k === 'paid') txt = SYM.paid + ' ' + money(m.acc); else if (st.k !== 'none') txt = SYM[st.k] + ' ' + money(m.unpaid);
+      h += '<td class="cell s-' + st.k + '" title="' + esc(c.title + ' ' + MN[mo-1] + ' ' + year + (m ? ': accrued ' + mf(m.acc) + ', paid ' + mf(m.applied) + ', owed ' + mf(m.unpaid) + ' – ' + st.label : ': no activity')) + '">' + txt + '</td>';
+    }
+    h += '</tr>';
+  }
+  h += '</tbody></table>';
+  h += '<div class="legend"><span class="pill s-paid">✓ Paid</span><span class="pill s-up">… Unpaid, not yet due</span><span class="pill s-part">◐ Partly paid, not yet due</span><span class="pill s-late">! Overdue</span><span class="pill s-none">– No activity</span></div>';
+  h += '<p class="hint">Federal taxes (Social Security, Medicare, income tax withholding, OregonSaves) are due on the 15th of the following month. The Oregon taxes other than withholding are treated as due at the end of the month after each quarter (e.g. Q3 → Oct 31). Oregon withholding is remitted monthly, due on the 15th of the following month. FUTA is paid once a year, due Jan 31 of the following year (Form 940). Change these in your head if your deposit schedule differs – the totals don\'t change.</p>';
+  $('pane-ov').innerHTML = h;
+  document.querySelectorAll('.tc[data-tax]').forEach(el => el.onclick = () => { showPane('det'); const t = document.getElementById('sec-' + el.dataset.tax); if (t) t.scrollIntoView(); });
+}
+
+/* ---------- rendering: detail ---------- */
+function detailTable(c, year){
+  let h = '<table class="d"><thead><tr><th>Period</th><th>Accrued</th><th>Paid (applied)</th><th>Still owed</th><th>Deposits made that month</th><th>Status</th></tr></thead><tbody>';
+  if (c.openingOwed > 0.004) h += '<tr><td>Before the first month in this report</td><td></td><td></td><td>' + money(c.openingOwed) + '</td><td></td><td>' + pill({k:'late',label:'Still owed'}) + '</td></tr>';
+  for (let q = 1; q <= 4; q++){
+    for (let mo = (q-1)*3 + 1; mo <= q*3; mo++){
+      const ym = year + '-' + pad(mo); const m = c.months[ym] || { acc:0, dep:0, applied:0, unpaid:0 };
+      const st = statusOf(m, ym, c.due); const cur = (year === CURY && q === CURQ);
+      h += '<tr class="' + (cur ? 'cur' : '') + '"><td>' + MN[mo-1] + ' ' + year + '</td><td>' + money(m.acc) + '</td><td>' + money(m.applied) + '</td><td>' + money(m.unpaid) + '</td><td>' + money(m.dep) + '</td><td>' + (st.k === 'none' ? '' : pill(st)) + '</td></tr>';
+    }
+    const s = sumMonths(c, year, [q]);
+    h += '<tr class="q"><td>Q' + q + ' ' + year + ' total</td><td>' + money(s.acc) + '</td><td>' + money(s.applied) + '</td><td>' + money(s.unpaid) + '</td><td>' + money(s.dep) + '</td><td></td></tr>';
+  }
+  const y = sumMonths(c, year);
+  return h + '<tr class="y"><td>' + year + ' total</td><td>' + money(y.acc) + '</td><td>' + money(y.applied) + '</td><td>' + money(y.unpaid) + '</td><td>' + money(y.dep) + '</td><td></td></tr></tbody></table>';
+}
+function yearlyTable(c, years){
+  let h = '<table class="d"><thead><tr><th>Year</th><th>Q1 accrued</th><th>Q2</th><th>Q3</th><th>Q4</th><th>Year accrued</th><th>Paid</th><th>Still owed</th></tr></thead><tbody>';
+  for (const y of years){ const qs = [1,2,3,4].map(q => sumMonths(c, y, [q]).acc); const t = sumMonths(c, y);
+    h += '<tr><td>' + y + '</td>' + qs.map(v => '<td>' + money(v) + '</td>').join('') + '<td>' + money(t.acc) + '</td><td>' + money(t.applied) + '</td><td>' + money(t.unpaid) + '</td></tr>'; }
+  return h + '</tbody></table>';
+}
+function renderDetail(){
+  const year = +$('yr').value; const T = MODEL.taxes; let h = '';
+  const sec = (c, extra) => {
+    const o = overall(c);
+    h += '<h2 id="sec-' + c.id + '">' + esc(c.title) + ' ' + (c.names.length ? '<span class="pill s-' + o.k + '">' + SYM[o.k] + ' ' + (o.owed > 0.004 ? mf(o.owed) + ' owed' : 'all paid') + '</span>' : '') + '</h2>';
+    h += '<div class="hint">Accounts used: ' + (c.names.length ? esc(c.names.join(', ')) : '<b>no matching payable account in your books</b>') + '</div>';
+    if (c.names.length) h += extra || detailTable(c, year);
+  };
+  h += '<div class="group-h">Federal</div>';
+  sec(T.ss); sec(T.med); sec(MODEL.fica); sec(T.fit);
+  const fu = T.futa; sec(fu, fu.names.length ? yearlyTable(fu, MODEL.years) + '<div class="hint">Month-by-month:</div>' + detailTable(fu, year) : '');
+  h += '<div class="group-h" style="margin-top:28px">Oregon</div>';
+  sec(T.orwh); sec(T.stt); sec(T.tm); sec(T.pl); sec(T.os);
+  h += '<p class="hint">Oregon unemployment insurance and the Workers\' Benefit Fund have no payable account in your books, so they can\'t be shown here.</p>';
+  $('pane-det').innerHTML = h;
+}
+
+/* ---------- rendering: Form 941 ---------- */
+function wagesIn(txs, year, q){ let t = 0; for (const x of txs || []){ if (+x.date.slice(0,4) !== year) continue; if (Math.ceil(+x.date.slice(5,7)/3) !== q) continue; t += x.deb - x.cre; } return r2(t); }
+function calc941(year, q){
+  const T = MODEL.taxes;
+  const ss = sumMonths(T.ss, year, [q]), med = sumMonths(T.med, year, [q]), fit = sumMonths(T.fit, year, [q]);
+  const months = [0,1,2].map(i => { const ym = year + '-' + pad((q-1)*3 + 1 + i); return r2(((T.ss.months[ym]||{}).acc||0) + ((T.med.months[ym]||{}).acc||0) + ((T.fit.months[ym]||{}).acc||0)); });
+  const wageAcct = Object.keys(MODEL.byAccount).find(n => /^salary and wages$/i.test(n));
+  const wages = wageAcct ? wagesIn(MODEL.byAccount[wageAcct], year, q) : null;
+  const ssImplied = r2(ss.acc / 0.124);
+  const gap = (wages != null && ssImplied > 0) ? Math.abs(wages - ssImplied) / Math.max(wages, ssImplied) : null;
+  /* Social Security and Medicare wages are normally the same number: use the Salary and Wages total when it agrees with the ledger tax, else the wages implied by the tax */
+  const taxWages = (wages != null && gap != null && gap <= 0.03) ? wages : ssImplied;
+  const ssWages = taxWages, medWages = taxWages;
+  const ssTax = r2(ssWages * 0.124), medTax = r2(medWages * 0.029);       /* what the IRS formula gives */
+  const l5e = r2(ssTax + medTax), l3 = fit.acc, l6 = r2(l3 + l5e);
+  const actualTotal = r2(ss.acc + med.acc + fit.acc);                       /* what the ledger actually recorded */
+  const l7 = r2(actualTotal - l6);                                          /* fractions-of-cents adjustment */
+  const l10 = r2(l6 + l7), l12 = l10;
+  const l13 = r2(ss.applied + med.applied + fit.applied);
+  const emp = new Set(); for (const n of T.ss.names) for (const x of MODEL.byAccount[n] || []){ if (+x.date.slice(0,4) === year && Math.ceil(+x.date.slice(5,7)/3) === q && x.cre > 0){ const p = (x.desc || '').split(' — ')[1]; if (p) emp.add(p); } }
+  const depMade = r2(ss.dep + med.dep + fit.dep);
+  return { year, q, wages, wageAcct, ssWages, medWages, ssTax, medTax, ssLedger:ss.acc, medLedger:med.acc, ssImplied, gap, l3, l5e, l6, l7, l10, l12, l13, l14: r2(Math.max(0, l12 - l13)), l15: r2(Math.max(0, l13 - l12)), months, emp: emp.size, depMade, hasFit: T.fit.names.length > 0 };
+}
+function renderForm941(){
+  if (!MODEL) { $('f941').innerHTML = '<p class="hint">Load a report first.</p>'; return; }
+  const [y, q] = $('qsel').value.split('-').map(Number); const c = calc941(y, q);
+  const ln = (no, label, c1, c2, cls, sub) => '<div class="ln"><div class="no">' + no + '</div><div>' + label + (sub ? '<div class="sub2">' + sub + '</div>' : '') + '</div><div class="amt c1">' + (c1 == null ? '' : c1) + '</div><div class="amt ' + (cls || '') + '">' + (c2 == null ? '' : c2) + '</div></div>';
+  let h = '<div class="form"><div class="fh"><div><b>Form 941</b> &nbsp;Employer\'s QUARTERLY Federal Tax Return</div><div><b>Q' + q + ' ' + y + '</b></div></div>';
+  h += '<div class="part">Part 1: Answer these questions for this quarter</div>';
+  h += '<div class="ln h"><div></div><div></div><div style="text-align:right">Column 1 (wages)</div><div style="text-align:right">Column 2 (tax)</div></div>';
+  h += ln('1', 'Number of employees who received wages, tips or other compensation', c.emp, null, '', 'Counted from this quarter\'s payslips. Line 1 is officially the count for the pay period including the 12th of the quarter\'s last month.');
+  h += ln('2', 'Wages, tips and other compensation', null, c.wages == null ? 'n/a' : mf(c.wages), '', c.wageAcct ? 'From your "Salary and Wages" account, by pay date' : 'No "Salary and Wages" account found');
+  h += ln('3', 'Federal income tax withheld from wages, tips and other compensation', null, mf(c.l3), c.hasFit ? '' : 'warn', c.hasFit ? '' : 'No federal income tax payable account exists in your books, so this shows $0.00. Enter the real figure from your payroll records if you withhold any.');
+  h += ln('5a', 'Taxable social security wages × 0.124', mf(c.ssWages), mf(c.ssTax), '', 'Wages × 12.4% (employee + employer shares). Wages = your Salary and Wages total.');
+  h += ln('5b', 'Taxable social security tips × 0.124', mf(0), mf(0));
+  h += ln('5c', 'Taxable Medicare wages and tips × 0.029', mf(c.medWages), mf(c.medTax), '', 'Same wages as 5a × 2.9% (employee + employer shares).');
+  h += ln('5d', 'Taxable wages and tips subject to Additional Medicare Tax withholding × 0.009', mf(0), mf(0), '', 'Only applies to wages over $200,000 per employee.');
+  h += ln('5e', 'Total social security and Medicare taxes (add 5a – 5d)', null, mf(c.l5e), 'ok');
+  h += ln('6', 'Total taxes before adjustments (lines 3 + 5e + 5f)', null, mf(c.l6));
+  h += ln('7', 'Current quarter\'s adjustment for fractions of cents', null, mf(c.l7), Math.abs(c.l7) > 0.004 ? 'warn' : '', Math.abs(c.l7) > 0.004 ? 'Your payroll rounds each payslip to the cent, so the tax actually recorded in the ledger (' + mf(c.ssLedger + c.medLedger + c.l3) + ') differs slightly from wages × rate (' + mf(c.l6) + '). This line closes that gap.' : 'Ledger tax equals wages × rate exactly.')+ln('8–9', 'Adjustments for sick pay, tips and group-term life insurance', null, mf(0), '', 'Not tracked in your ledger – enter manually if any.');
+  h += ln('10', 'Total taxes after adjustments', null, mf(c.l10));
+  h += ln('12', 'Total taxes after adjustments and credits', null, mf(c.l12), 'ok');
+  h += ln('13', 'Total deposits for this quarter', null, mf(c.l13), '', 'Payments from your ledger applied to this quarter\'s tax, oldest first');
+  h += ln('14', 'Balance due (line 12 minus line 13)', null, mf(c.l14), c.l14 > 0.004 ? 'bad' : 'ok', c.l14 > 0.004 ? 'You owe this for the quarter' : '');
+  h += ln('15', 'Overpayment (line 13 minus line 12)', null, mf(c.l15), c.l15 > 0.004 ? 'warn' : '');
+  h += '<div class="part">Part 2: Tell us about your deposit schedule and tax liability for this quarter (monthly schedule depositor)</div>';
+  const mn = [0,1,2].map(i => MN[(q-1)*3 + i] + ' ' + y);
+  h += ln('16-1', 'Tax liability for Month 1 – ' + mn[0], null, mf(c.months[0]));
+  h += ln('16-2', 'Tax liability for Month 2 – ' + mn[1], null, mf(c.months[1]));
+  h += ln('16-3', 'Tax liability for Month 3 – ' + mn[2], null, mf(c.months[2]));
+  const tot = r2(c.months[0] + c.months[1] + c.months[2]);
+  h += ln('', '<b>Total liability for quarter</b> (must equal line 12)', null, mf(tot), Math.abs(tot - c.l12) < 0.005 ? 'ok' : 'bad');
+  h += '</div>';
+  /* cross-checks */
+  const chk = [];
+  const wgap = c.gap;
+  if (Math.abs(c.l7) > 0.004) chk.push(['s-none', 'Line 7 shows ' + mf(c.l7) + ' for fractions of cents: Social Security and Medicare wages are the same number (' + mf(c.ssWages) + '), and the cent difference comes from rounding on each payslip.']);
+  if (c.wages == null) chk.push(['s-none', 'Could not find a "Salary and Wages" account to cross-check line 2.']);
+  else if (wgap != null && wgap > 0.03) chk.push(['s-part', 'Line 2 wages (' + mf(c.wages) + ') and the wages implied by Social Security tax (' + mf(c.ssImplied) + ') differ by more than 3%. Some pay may be exempt from Social Security, or the Salary and Wages account holds other items – check before filing.']);
+  else chk.push(['s-paid', 'Line 2 wages agree with the wages implied by Social Security tax (within 3%).']);
+  chk.push([c.l14 > 0.004 ? 's-late' : 's-paid', c.l14 > 0.004 ? 'Balance due of ' + mf(c.l14) + ' for this quarter.' : 'Deposits cover this quarter\'s tax.']);
+  chk.push([Math.abs(tot - c.l12) < 0.005 ? 's-paid' : 's-late', 'Monthly liabilities (' + mf(tot) + ') ' + (Math.abs(tot - c.l12) < 0.005 ? 'equal' : 'do NOT equal') + ' line 12 (' + mf(c.l12) + ').']);
+  if (!c.hasFit) chk.push(['s-part', 'Line 3 is $0.00 because there is no federal income tax withholding account. Add the real figure if you withhold federal income tax.']);
+  chk.push(['s-none', 'Deposits actually made during the quarter: ' + mf(c.depMade) + ' (may include payments for earlier quarters).']);
+  h += '<ul class="checks" style="list-style:none;padding:0">' + chk.map(x => '<li><span class="pill ' + x[0] + '">' + esc(x[1]) + '</span></li>').join('') + '</ul>';
+  h += '<p class="hint">This is an on-screen worksheet for transcribing figures – not a filing. Compare the wages with your payroll register. Employer info, Part 3–5 and signatures are not included.</p>';
+  $('f941').innerHTML = h; MODEL.last941 = c;
+}
+function copy941(){
+  const c = MODEL && MODEL.last941; if (!c) return;
+  const L = [ 'Form 941 – Q' + c.q + ' ' + c.year, 'Line 1 employees: ' + c.emp, 'Line 2 wages: ' + (c.wages == null ? 'n/a' : c.wages.toFixed(2)), 'Line 3 federal income tax withheld: ' + c.l3.toFixed(2),
+    'Line 5a col1 SS wages: ' + c.ssWages.toFixed(2) + '  col2: ' + c.ssTax.toFixed(2), 'Line 5c col1 Medicare wages: ' + c.medWages.toFixed(2) + '  col2: ' + c.medTax.toFixed(2),
+    'Line 5e: ' + c.l5e.toFixed(2), 'Line 6: ' + c.l6.toFixed(2), 'Line 7 fractions of cents: ' + c.l7.toFixed(2), 'Line 10: ' + c.l10.toFixed(2), 'Line 12: ' + c.l12.toFixed(2), 'Line 13 deposits: ' + c.l13.toFixed(2), 'Line 14 balance due: ' + c.l14.toFixed(2), 'Line 15 overpayment: ' + c.l15.toFixed(2),
+    'Line 16 month 1: ' + c.months[0].toFixed(2), 'Line 16 month 2: ' + c.months[1].toFixed(2), 'Line 16 month 3: ' + c.months[2].toFixed(2) ].join('\n');
+  const done = ok => { $('cpmsg').textContent = ok ? 'Copied.' : 'Could not copy – select the figures by hand.'; };
+  try { navigator.clipboard.writeText(L).then(() => done(true), () => fallback()); } catch (e) { fallback(); }
+  function fallback(){ try { const t = document.createElement('textarea'); t.value = L; document.body.appendChild(t); t.select(); const ok = document.execCommand('copy'); document.body.removeChild(t); done(ok); } catch (e) { done(false); } }
+}
+
+
+/* ---------- rendering: Form 940 ---------- */
+function calc940(year){
+  const fu = MODEL.taxes.futa; const s = sumMonths(fu, year);
+  const wageAcct = Object.keys(MODEL.byAccount).find(n => /^salary and wages$/i.test(n));
+  let wages = null, l5 = null, l7 = null, qTax = [0,0,0,0], emps = 0;
+  if (wageAcct){
+    const tx = (MODEL.byAccount[wageAcct] || []).filter(x => +x.date.slice(0,4) === year).slice().sort((x,y) => x.date < y.date ? -1 : x.date > y.date ? 1 : 0);
+    const run = {}; wages = 0; l7 = 0;
+    for (const x of tx){
+      const amt = x.deb - x.cre; const p = String(x.desc || '').split(' — ');
+      const emp = (p.length >= 3 ? p[1] : 'all').trim();
+      const q = Math.ceil(+x.date.slice(5,7) / 3) - 1;
+      const before = run[emp] || 0; const after = before + amt; run[emp] = after;
+      const tb = Math.max(0, Math.min(before, 7000)), ta = Math.max(0, Math.min(after, 7000));
+      l7 += (ta - tb); qTax[q] += (ta - tb) * 0.06; wages += amt;
+    }
+    wages = r2(wages); l7 = r2(l7); l5 = r2(Math.max(0, wages - l7)); emps = Object.keys(run).length;
+    qTax = qTax.map(r2);
+  }
+  const l8 = l7 == null ? null : r2(l7 * 0.006);
+  const l9 = l7 == null ? null : r2(l7 * 0.054);   /* all wages excluded from state UI: no credit, so +5.4% */
+  const l12 = l7 == null ? s.acc : r2(l8 + l9), l13 = s.applied;
+  return { year, wages, wageAcct, l7, l5, l8, l9, l12, l13, emps, ledgerAcc: s.acc, l14: r2(Math.max(0, l12 - l13)), l15: r2(Math.max(0, l13 - l12)), qs: wageAcct ? qTax : [1,2,3,4].map(q => sumMonths(fu, year, [q]).acc), has: fu.names.length > 0, due: (year + 1) + '-01-31' };
+}
+function renderForm940(){
+  if (!MODEL){ $('f940').innerHTML = '<p class="hint">Load a report first.</p>'; return; }
+  const y = +$('ysel940').value; const c = calc940(y);
+  if (!c.has){ $('f940').innerHTML = '<p class="hint">No FUTA payable account found in your books.</p>'; return; }
+  const ln = (no, label, c2, cls, sub) => '<div class="ln"><div class="no">' + no + '</div><div>' + label + (sub ? '<div class="sub2">' + sub + '</div>' : '') + '</div><div class="amt c1"></div><div class="amt ' + (cls || '') + '">' + (c2 == null ? '' : c2) + '</div></div>';
+  let h = '<div class="form"><div class="fh"><div><b>Form 940</b> &nbsp;Employer\'s Annual Federal Unemployment (FUTA) Tax Return</div><div><b>' + y + '</b></div></div>';
+  h += '<div class="part">Part 1: Tell us about your return</div>';
+  h += ln('1a', 'If you had to pay state unemployment tax in one state only, enter the state abbreviation', '(blank)', '', 'You pay no state unemployment tax, so leave 1a blank.');
+  h += '<div class="part">Part 2: Determine your FUTA tax before adjustments</div>';
+  h += ln('3', 'Total payments to all employees', c.wages == null ? 'n/a' : mf(c.wages), '', c.wageAcct ? 'From your "Salary and Wages" account, by pay date' : 'No "Salary and Wages" account found');
+  h += ln('4', 'Payments exempt from FUTA tax', mf(0), '', 'Not tracked in your ledger – enter manually if any (for example fringe benefits).');
+  h += ln('5', 'Total of payments made to each employee in excess of $7,000', c.l5 == null ? 'n/a' : mf(c.l5), '', 'Each employee\'s pay above $7,000 for the year (' + c.emps + ' employee' + (c.emps == 1 ? '' : 's') + ' found in Salary and Wages)');
+  h += ln('6', 'Subtotal (line 4 + line 5)', c.l5 == null ? 'n/a' : mf(c.l5));
+  h += ln('7', 'Total taxable FUTA wages (line 3 – line 6)', c.l7 == null ? 'n/a' : mf(c.l7), '', 'Line 3 minus line 6: wages up to $7,000 per employee, from your wage entries.');
+  h += ln('8', 'FUTA tax before adjustments (line 7 × 0.006)', c.l8 == null ? 'n/a' : mf(c.l8), '', 'Taxable wages × 0.006 – calculated from wages');
+  h += '<div class="part">Part 3: Determine your adjustments</div>';
+  h += ln('9', 'If ALL taxable FUTA wages were excluded from state unemployment tax, multiply line 7 by 0.054', c.l9 == null ? 'n/a' : mf(c.l9), '', 'Applies to you: no state unemployment tax is paid, so there is no 5.4% credit.');
+  h += ln('10–11', 'Adjustments for late state payments and credit reduction states', mf(0), '', 'Not applicable when no state tax is paid – enter manually if any.');
+  h += '<div class="part">Part 4: Determine your FUTA tax and balance due or overpayment</div>';
+  h += ln('12', 'Total FUTA tax after adjustments (lines 8 + 9 + 10 + 11)', mf(c.l12), 'ok', '6.0% of taxable wages');
+  h += ln('13', 'FUTA tax deposited for the year', mf(c.l13), '', 'Payments from your ledger applied to this year\'s FUTA, oldest first');
+  h += ln('14', 'Balance due (line 12 minus line 13)', mf(c.l14), c.l14 > 0.004 ? 'bad' : 'ok', c.l14 > 0.004 ? (c.l14 <= 500 ? 'Under $500: can be paid with the return, due ' + c.due : 'Over $500: deposit by the end of the month after the quarter') : '');
+  h += ln('15', 'Overpayment (line 13 minus line 12)', mf(c.l15), c.l15 > 0.004 ? 'warn' : '');
+  h += '<div class="part">Part 5: Report your FUTA tax liability by quarter</div>';
+  ['16a  Q1 (Jan–Mar)', '16b  Q2 (Apr–Jun)', '16c  Q3 (Jul–Sep)', '16d  Q4 (Oct–Dec)'].forEach((l, i) => { h += ln(l.slice(0, 3), l.slice(5), mf(c.qs[i])); });
+  const tot = r2(c.qs[0] + c.qs[1] + c.qs[2] + c.qs[3]);
+  h += ln('17', '<b>Total tax liability for the year</b> (must equal line 12)', mf(tot), Math.abs(tot - c.l12) < 0.005 ? 'ok' : 'bad');
+  h += '</div>';
+  const chk = [];
+  chk.push([c.l14 > 0.004 ? 's-part' : 's-paid', c.l14 > 0.004 ? 'Balance due of ' + mf(c.l14) + ' for ' + y + ', due ' + c.due + '.' : 'FUTA for ' + y + ' is covered by deposits.']);
+  chk.push([Math.abs(tot - c.l12) < 0.005 ? 's-paid' : 's-late', 'Quarterly liabilities (' + mf(tot) + ') ' + (Math.abs(tot - c.l12) < 0.005 ? 'equal' : 'do NOT equal') + ' line 12 (' + mf(c.l12) + ').']);
+  if (Math.abs(c.ledgerAcc - c.l12) > 1) chk.push(['s-part', 'Your FUTA payable account has accrued ' + mf(c.ledgerAcc) + ' for ' + y + ' versus ' + mf(c.l12) + ' calculated from wages (6.0% of taxable wages). Line 12 uses the calculated figure; the difference is ' + mf(r2(c.ledgerAcc - c.l12)) + '.']);
+  if (c.l7 != null && c.l7 > 0) chk.push(['s-none', 'What if your wages were subject to state unemployment tax? Line 9 would be $0.00 and the 5.4% credit would apply, so line 12 would be ' + mf(c.l8) + ' instead of ' + mf(c.l12) + ' – a difference of ' + mf(c.l9) + '. This is only a comparison; it is not used in the figures above.']);
+  chk.push(['s-none', 'Uses 6.0% (0.6% on line 8 + 5.4% on line 9) because no state unemployment tax is paid. If that ever changes, line 9 and the credit need to be redone.']);
+  h += '<ul class="checks" style="list-style:none;padding:0">' + chk.map(x => '<li><span class="pill ' + x[0] + '">' + esc(x[1]) + '</span></li>').join('') + '</ul>';
+  h += '<p class="hint">On-screen worksheet for transcribing figures – not a filing. Form 940 is due Jan 31 of the following year (Feb 10 if all deposits were made on time). Employer info, Parts 6–7 and signatures are not included.</p>';
+  $('f940').innerHTML = h; MODEL.last940 = c;
+}
+function copy940(){
+  const c = MODEL && MODEL.last940; if (!c) return;
+  const L = ['Form 940 – ' + c.year, 'Line 3 total payments: ' + (c.wages == null ? 'n/a' : c.wages.toFixed(2)), 'Line 5 over $7,000: ' + (c.l5 == null ? 'n/a' : c.l5.toFixed(2)), 'Line 7 taxable FUTA wages: ' + (c.l7 == null ? 'n/a' : c.l7.toFixed(2)),
+    'Line 8 FUTA tax before adjustments: ' + (c.l8 == null ? 'n/a' : c.l8.toFixed(2)), 'Line 9: ' + (c.l9 == null ? 'n/a' : c.l9.toFixed(2)), 'Line 12: ' + c.l12.toFixed(2), 'Line 13 deposited: ' + c.l13.toFixed(2), 'Line 14 balance due: ' + c.l14.toFixed(2), 'Line 15 overpayment: ' + c.l15.toFixed(2),
+    'Line 16a Q1: ' + c.qs[0].toFixed(2), 'Line 16b Q2: ' + c.qs[1].toFixed(2), 'Line 16c Q3: ' + c.qs[2].toFixed(2), 'Line 16d Q4: ' + c.qs[3].toFixed(2)].join('\n');
+  const done = ok => { $('cpmsg940').textContent = ok ? 'Copied.' : 'Could not copy – select the figures by hand.'; };
+  try { navigator.clipboard.writeText(L).then(() => done(true), () => fb()); } catch (e) { fb(); }
+  function fb(){ try { const t = document.createElement('textarea'); t.value = L; document.body.appendChild(t); t.select(); const ok = document.execCommand('copy'); document.body.removeChild(t); done(ok); } catch (e) { done(false); } }
+}
+
+/* ---------- Oregon Form OQ + Form 132 ---------- */
+function orTxs(id){ const t = MODEL.taxes[id]; return t ? t.names.reduce((a, n) => a.concat(MODEL.byAccount[n] || []), []) : []; }
+function inQtr(x, y, q){ return +x.date.slice(0,4) === y && Math.ceil(+x.date.slice(5,7)/3) === q; }
+function payeeOf(x){ const p = String(x.desc || '').split(' — '); return (p.length >= 3 ? p[1] : (p[1] || 'Unknown')).trim(); }
+/* TriMet payroll tax rate by year (from the Oregon DOR combined payroll booklet). Add new years here. */
+const TRIMET_RATE = { 2024: 0.008137, 2025: 0.008237, 2026: 0.008237 };
+function calcOQ(y, q){
+  const T = MODEL.taxes; const g = id => (T[id] && T[id].names.length) ? sumMonths(T[id], y, [q]) : { acc:0, applied:0, unpaid:0, none:true };
+  const wageAcct = Object.keys(MODEL.byAccount).find(n => /^salary and wages$/i.test(n));
+  const wages = wageAcct ? wagesIn(MODEL.byAccount[wageAcct], y, q) : null;
+  const wh = g('orwh'), st = g('stt'), tm = g('tm'), pl = g('pl');
+  const tmRate = TRIMET_RATE[y] || null;
+  const tm7 = (tmRate && wages != null) ? Math.floor(wages * tmRate * 100 + 1e-6) / 100 : tm.acc;   /* box 7a rounds down */
+  const a4 = r2(Math.max(0, wh.acc - wh.applied)), b4 = r2(Math.max(0, st.acc - st.applied)), a9 = r2(Math.max(0, tm7 - tm.applied));
+  const b22 = r2(Math.max(0, pl.acc - pl.applied));
+  const box10 = r2(a4 + b4 + a9);
+  /* Form 132: per employee */
+  const emp = {};
+  const add = (name, k, v) => { (emp[name] = emp[name] || { wages:0, wh:0, stt:0, tm:0, pl:0 })[k] += v; };
+  if (wageAcct) for (const x of MODEL.byAccount[wageAcct]) if (inQtr(x, y, q)) add(payeeOf(x), 'wages', x.deb - x.cre);
+  [['orwh','wh'],['stt','stt'],['tm','tm'],['pl','pl']].forEach(([id, k]) => orTxs(id).forEach(x => { if (inQtr(x, y, q)) add(payeeOf(x), k, x.cre); }));
+  return { y, q, wages, wageAcct, wh, st, tm, tmRate, tm7, pl, a4, b4, a9, b22, box10, total: r2(box10 + b22), emp,
+           due: dueDate(y + '-' + pad(q * 3), 'q'), has: !!(wh.acc || st.acc || tm.acc || pl.acc || (wages || 0)) };
+}
+function renderFormOQ(){
+  if (!MODEL){ $('for').innerHTML = '<p class="hint">Load a report first.</p>'; return; }
+  const [y, q] = $('qselor').value.split('-').map(Number); const c = calcOQ(y, q);
+  const ln = (no, label, v, cls, sub) => '<div class="ln"><div class="no">' + no + '</div><div>' + label + (sub ? '<div class="sub2">' + sub + '</div>' : '') + '</div><div class="amt c1"></div><div class="amt ' + (cls || '') + '">' + (v == null ? '' : v) + '</div></div>';
+  const man = 'Not tracked in your ledger – enter manually';
+  const w = c.wages == null ? 'n/a' : mf(c.wages);
+  const rate = (tax, wg) => (wg > 0 ? (tax / wg).toFixed(6) : '—');
+  let h = '<div class="form"><div class="fh"><div><b>Form OQ</b> &nbsp;Oregon Combined Payroll Tax Report</div><div><b>Q' + q + ' ' + y + '</b></div></div>';
+  h += '<div class="part">State income tax withholding</div>';
+  h += ln('1a', 'Subject wages', w, '', 'From your "Salary and Wages" account by pay date');
+  h += ln('2a', 'Total tax withheld', mf(c.wh.acc), '', c.wh.none ? 'No Oregon withholding account found' : 'Oregon withholding accrued this quarter');
+  h += ln('3a', 'Prepaid tax this quarter', mf(c.wh.applied), '', 'Payments from your ledger applied to this quarter, oldest first');
+  h += ln('4a', 'Total due (2a – 3a)', mf(c.a4), c.a4 > 0.004 ? 'bad' : 'ok');
+  h += '<div class="part">Statewide transit tax</div>';
+  h += ln('1b', 'Subject wages', w);
+  h += ln('2b', 'Total statewide transit tax withheld (0.1% of wages)', mf(c.st.acc), '', c.st.none ? 'No statewide transit account found' : 'Implied rate ' + rate(c.st.acc, c.wages));
+  h += ln('3b', 'Prepaid tax', mf(c.st.applied));
+  h += ln('4b', 'Total due (2b – 3b)', mf(c.b4), c.b4 > 0.004 ? 'bad' : 'ok');
+  h += '<div class="part">TriMet transit district tax</div>';
+  h += ln('5a', 'Subject wages (TriMet district)', w, '', 'Assumes all wages are earned in the TriMet district');
+  h += ln('6a', 'Tax rate', c.tmRate ? c.tmRate.toFixed(6) : rate(c.tm.acc, c.wages), '', c.tmRate ? 'TriMet rate for ' + y + ' (from the DOR booklet)' : 'No official rate for ' + y + ' in the TRIMET_RATE table – showing ledger tax ÷ wages as a stand-in. Add the year\'s rate to the table.');
+  h += ln('7a', 'Tax amount (5a × 6a)', mf(c.tm7), '', c.tm.none ? 'No TriMet account found' : 'Wages × rate, rounded down to the cent. Your ledger accrued ' + mf(c.tm.acc) + '.');
+  h += ln('8a', 'Prepaid tax', mf(c.tm.applied));
+  h += ln('9a', 'Total due (7a – 8a)', mf(c.a9), c.a9 > 0.004 ? 'bad' : 'ok');
+  h += ln('5b–9b', 'Lane Transit District', mf(0), '', 'Not applicable unless you have employees working in the Lane district');
+  h += ln('10', '<b>Subtotal</b> (4a + 4b + 9a + 9b)', mf(c.box10), c.box10 > 0.004 ? 'bad' : 'ok', 'Withholding and transit due to the Department of Revenue');
+  h += '<div class="part">Unemployment insurance (Employment Department)</div>';
+  h += ln('12–22a', 'Covered workers, UI subject wages, excess wages, tax rate, UI tax and total UI due', '—', 'warn', man + ' (no UI payable account exists). Wages this quarter: ' + w + '. If you are exempt from Oregon unemployment insurance (for example, owners/partners), enter zero workers and zero tax on the real form.');
+  h += '<div class="part">Paid Leave Oregon</div>';
+  h += ln('13b', 'Subject wages', w);
+  h += ln('14b', 'Excess wages (over the annual Social Security-style cap)', mf(0), '', 'Only applies to high earners – enter manually if any');
+  h += ln('15b', 'Taxable wages (13b – 14b)', w);
+  h += ln('16b', 'Contribution rate', rate(c.pl.acc, c.wages), '', 'Implied from your ledger. The statutory total is 1.0% of wages; employers with fewer than 25 employees pay the employee share only (0.6%) because the employer match is 0.00.');
+  h += ln('19b', 'Total contributions (17 + 18)', mf(c.pl.acc), '', c.pl.none ? 'No Paid Leave account found' : 'As accrued in your ledger. If you only remit the employee share, enter the full amount as the employee share and 0.00 as the employer share on the real form.');
+  h += ln('20b', 'Prepaid contributions', mf(c.pl.applied));
+  h += ln('22b', 'Total due (19b – 20b + penalties/interest)', mf(c.b22), c.b22 > 0.004 ? 'bad' : 'ok', 'Penalties and interest (21b) not included');
+  h += '<div class="part">Workers\' Benefit Fund</div>';
+  h += ln('27–31', 'Whole hours worked, assessment rate, total WBF due', '—', 'warn', man + ' (no WBF payable account exists). If you are exempt from the Workers\' Benefit Fund (for example, owners/partners), enter the exempt answer on the real form.');
+  h += ln('32', '<b>Total payment</b> (10 + 22a + 22b + 31)', mf(c.total), c.total > 0.004 ? 'bad' : 'ok', 'Shown without UI (22a) and WBF (31) because they are not in your ledger – add them by hand');
+  h += '</div>';
+  /* Form 132 */
+  const names = Object.keys(c.emp).sort();
+  h += '<h2>Form 132 – employee detail for Q' + q + ' ' + y + '</h2><p class="hint">Accompanies Form OQ: one line per employee. Social security numbers and hours worked are not in your ledger – add them on the real form.</p>';
+  h += '<table class="d"><tr><th>Employee</th><th>Wages</th><th>OR withheld</th><th>Statewide transit</th><th>TriMet</th><th>Paid Leave</th></tr>';
+  const tot = { wages:0, wh:0, stt:0, tm:0, pl:0 };
+  for (const n of names){ const e = c.emp[n]; for (const k in tot) tot[k] += e[k]; h += '<tr><td>' + esc(n) + '</td><td>' + mf(r2(e.wages)) + '</td><td>' + mf(r2(e.wh)) + '</td><td>' + mf(r2(e.stt)) + '</td><td>' + mf(r2(e.tm)) + '</td><td>' + mf(r2(e.pl)) + '</td></tr>'; }
+  if (!names.length) h += '<tr><td colspan="6">No wages or Oregon taxes found for this quarter.</td></tr>';
+  else h += '<tr class="q"><td>Total</td><td>' + mf(r2(tot.wages)) + '</td><td>' + mf(r2(tot.wh)) + '</td><td>' + mf(r2(tot.stt)) + '</td><td>' + mf(r2(tot.tm)) + '</td><td>' + mf(r2(tot.pl)) + '</td></tr>';
+  h += '</table>';
+  const chk = [];
+  chk.push([c.total > 0.004 ? 's-part' : 's-paid', c.total > 0.004 ? 'Oregon amount due for Q' + q + ' ' + y + ' (before UI and WBF): ' + mf(c.total) + ', due ' + c.due + '.' : 'Withholding, transit and Paid Leave for Q' + q + ' ' + y + ' are covered by payments.']);
+  if (names.length && (Math.abs(tot.wh - c.wh.acc) > 0.01 || Math.abs(tot.pl - c.pl.acc) > 0.01)) chk.push(['s-late', 'Employee lines do not add up to the account totals – some entries have no employee name.']);
+  if (c.tmRate && Math.abs(c.tm7 - c.tm.acc) > 0.004) chk.push(['s-part', 'TriMet: wages × rate gives ' + mf(c.tm7) + ' but your ledger accrued ' + mf(c.tm.acc) + ' (difference ' + mf(r2(c.tm.acc - c.tm7)) + '). The form uses the calculated amount.']);
+  chk.push(['s-none', 'Prepaid boxes count every payment applied to this quarter so far (oldest unpaid first). Check dates if you pay after the filing deadline.']);
+  h += '<ul class="checks" style="list-style:none;padding:0">' + chk.map(x => '<li><span class="pill ' + x[0] + '">' + esc(x[1]) + '</span></li>').join('') + '</ul>';
+  h += '<p class="hint">On-screen worksheet for transcribing figures – not a filing. Form OQ is due the last day of the month after the quarter. Box numbers follow the 2024 form; the 2026 form may differ slightly. Employer info and signatures are not included.</p>';
+  $('for').innerHTML = h; MODEL.lastOQ = c;
+}
+function copyOQ(){
+  const c = MODEL && MODEL.lastOQ; if (!c) return;
+  const L = ['Form OQ – Q' + c.q + ' ' + c.y, 'Wages (1a/1b/5a/13b): ' + (c.wages == null ? 'n/a' : c.wages.toFixed(2)),
+    '2a withheld: ' + c.wh.acc.toFixed(2), '3a prepaid: ' + c.wh.applied.toFixed(2), '4a due: ' + c.a4.toFixed(2),
+    '2b STT: ' + c.st.acc.toFixed(2), '3b prepaid: ' + c.st.applied.toFixed(2), '4b due: ' + c.b4.toFixed(2),
+    '6a rate: ' + (c.tmRate ? c.tmRate.toFixed(6) : 'n/a'), '7a TriMet: ' + c.tm7.toFixed(2), '8a prepaid: ' + c.tm.applied.toFixed(2), '9a due: ' + c.a9.toFixed(2), '10 subtotal: ' + c.box10.toFixed(2),
+    '19b Paid Leave: ' + c.pl.acc.toFixed(2), '20b prepaid: ' + c.pl.applied.toFixed(2), '22b due: ' + c.b22.toFixed(2),
+    '32 total (without UI/WBF): ' + c.total.toFixed(2)].join('\n');
+  const done = ok => { $('cpmsgor').textContent = ok ? 'Copied.' : 'Could not copy – select the figures by hand.'; };
+  try { navigator.clipboard.writeText(L).then(() => done(true), () => fb()); } catch (e) { fb(); }
+  function fb(){ try { const t = document.createElement('textarea'); t.value = L; document.body.appendChild(t); t.select(); const ok = document.execCommand('copy'); document.body.removeChild(t); done(ok); } catch (e) { done(false); } }
+}
+
+/* ---------- tabs ---------- */
+function showPane(p){
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.p === p));
+  document.querySelectorAll('.pane').forEach(x => x.classList.toggle('on', x.id === 'pane-' + p));
+}
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => showPane(b.dataset.p));
+function renderAll(){
+  if (!MODEL){ $('pane-ov').innerHTML = '<p class="hint">Load a report first.</p>'; return; }
+  renderOverview(); renderDetail(); renderForm941(); renderForm940(); renderFormOQ();
+}
+
+/* ---------- loading ---------- */
+async function loadList(){
+  status('Loading report list…');
+  try{
+    const r = await apiGet('/api4/general-ledger-transactions-batch?PageSize=100');
+    rawLog.reportList = r;
+    const items = (r && r.items) || [];
+    const sel = $('rep'); sel.innerHTML = '';
+    items.sort((a,b) => String((b.item||{}).toDate||'').localeCompare(String((a.item||{}).toDate||'')));
+    let pick = -1;
+    items.forEach((it, i) => {
+      const d = it.item || {}; const o = document.createElement('option');
+      o.value = it.key; o.textContent = (d.description || '(no description)') + '  [' + (d.fromDate||'?').slice(0,10) + ' → ' + (d.toDate||'?').slice(0,10) + ']';
+      sel.appendChild(o);
+      if (pick < 0 && /cadence/i.test(d.description || '')) pick = i;
+    });
+    if (pick >= 0) sel.selectedIndex = pick;
+    $('mk').hidden = pick >= 0;
+    status(pick >= 0 ? '' : 'No "Payroll cadence" report in this Manager yet. Click "Create the Payroll cadence report" (adds one saved, read-only report covering 2024-2026).', pick < 0);
+    showRaw();
+    if (pick >= 0) loadData();
+  }catch(e){ status(e.message, true); rawLog.listError = String(e); showRaw(); }
+}
+async function loadData(){
+  const key = $('rep').value; if (!key){ status('Pick a report first.', true); return; }
+  status('Loading transactions… (can take a few seconds)');
+  try{
+    const view = await apiGet('/api4/general-ledger-transactions-view?Key=' + encodeURIComponent(key));
+    rawLog.viewKeys = view ? Object.keys(view) : null;
+    const tx = parseTxns(view);
+    rawLog.parsedTransactions = tx.length;
+    rawLog.sampleTransactions = tx.slice(0, 3);
+    if (!tx.length){ rawLog.viewStart = JSON.stringify(view).slice(0, 2500); status('Loaded the report but found 0 dated transactions. Open Debug at the bottom and send it to Claude.', true); showRaw(); return; }
+    const byAccount = {};
+    for (const t of tx){ (byAccount[t.account] || (byAccount[t.account] = [])).push(t); }
+    const taxes = {}; TAXES.forEach(t => taxes[t.id] = computeTax(t, byAccount));
+    const fica = combine([taxes.ss, taxes.med], 'fica', 'FICA total (Social Security + Medicare)', 'Federal', 'm15');
+    const years = Array.from(new Set(tx.map(t => +t.date.slice(0,4)))).sort();
+    if (years.indexOf(CURY) < 0) years.push(CURY);
+    MODEL = { taxes, fica, years, byAccount };
+    rawLog.accountsMatched = TAXES.map(t => t.id + ': ' + (taxes[t.id].names.join(', ') || '(none)'));
+    const ys = $('yr'); const prev = ys.value;
+    ys.innerHTML = years.slice().reverse().map(y => '<option value="' + y + '">' + y + '</option>').join('');
+    ys.value = prev && years.map(String).indexOf(prev) >= 0 ? prev : String(CURY);
+    const qs = $('qsel'); const opts = []; for (const y of years.slice().reverse()) for (let q = 4; q >= 1; q--) if (y < CURY || (y === CURY && q <= CURQ)) opts.push('<option value="' + y + '-' + q + '">Q' + q + ' ' + y + '</option>');
+    qs.innerHTML = opts.join('');
+    /* default to the quarter you are probably filing: the previous quarter during its first 45 days after quarter end */
+    let dy = CURY, dq = CURQ; const qStart = new Date(CURY, (CURQ-1)*3, 1); if ((NOW - qStart) / 86400000 <= 45){ dq = CURQ - 1; if (dq < 1){ dq = 4; dy = CURY - 1; } }
+    qs.value = dy + '-' + dq; if (qs.value !== dy + '-' + dq && qs.options.length) qs.selectedIndex = 0;
+    const qo = $('qselor'); qo.innerHTML = qs.innerHTML; qo.value = qs.value;
+    const y9 = $('ysel940'); y9.innerHTML = years.slice().reverse().map(y => '<option value="' + y + '">' + y + '</option>').join(''); y9.value = String(years.indexOf(CURY - 1) >= 0 && (NOW.getMonth() === 0) ? CURY - 1 : CURY);
+    status(tx.length + ' transactions read (' + (view.subtitles || [''])[0] + ').');
+    renderAll(); showRaw();
+  }catch(e){ status(e.message, true); rawLog.viewError = String(e); showRaw(); }
+}
+$('mk').onclick = async () => {
+  status('Creating the saved report…');
+  try{
+    const r = await apiPost('/api4/general-ledger-transactions', { value: { description: 'Payroll cadence - all accounts 2024-2026', fromDate: '2024-01-01T00:00:00', toDate: '2026-12-31T00:00:00', account: null, customTheme: false } });
+    rawLog.createResult = r; showRaw(); await loadList();
+  }catch(e){ status('Could not create it automatically (' + e.message + '). In Manager: Reports → General Ledger Transactions → New Report, description "Payroll cadence - all accounts 2024-2026", From 2024-01-01, To 2026-12-31, Account left empty, Create. Then click Refresh list.', true); }
+};
+$('go').onclick = loadData;
+$('refresh').onclick = loadList;
+(function(){ const ys = $('yr'); let o = ''; for (let y = CURY; y >= 2024; y--) o += '<option value="' + y + '">' + y + '</option>'; ys.innerHTML = o; ys.value = String(CURY); })();
+$('yr').addEventListener('change', () => { if (MODEL) { renderOverview(); renderDetail(); } });
+$('qsel').addEventListener('change', renderForm941);
+$('qselor').addEventListener('change', renderFormOQ);
+$('copyor').onclick = copyOQ;
+$('copy941').onclick = copy941;
+$('ysel940').addEventListener('change', renderForm940);
+$('copy940').onclick = copy940;
+renderAll();
+loadList();
+</script>
+</body>
+</html>
