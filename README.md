@@ -61,6 +61,30 @@ Everything lives in `payroll_tax_cadence_extension.html`.
 - Form 941 line 3 (federal income tax withheld) needs its own payable account, otherwise it shows $0.00.
 - The TriMet worksheet assumes all wages are earned inside the district.
 
+## Roadmap
+
+Planned additions, limited to what applies to **Oregon payroll**. Nothing here has a date, and the order may change. Ideas and corrections are welcome as issues.
+
+**Oregon**
+- [ ] **Workers' Benefit Fund (WBF)**: hours worked and the assessment, with the Form OQ boxes 27–31 filled from the ledger.
+- [ ] **Oregon unemployment insurance (UI)**: taxable wages, wage-base cap, employer rate and tax due (Form OQ boxes 12–22a), plus a clear way to record an exemption.
+- [ ] **Lane Transit District (Lane County)**: Form OQ boxes 5b–9b, with a per-year rate table like the TriMet one. Check whether any Eugene-specific item applies.
+- [ ] **Per-employee transit districts**: TriMet and Lane tax only for wages earned inside each district, instead of assuming all wages count.
+- [ ] **Paid Leave Oregon**: employer share for employers with 25 or more employees, and the annual wage cap (boxes 14b, 17, 18).
+- [ ] **Oregon withholding deposit schedules**: monthly, quarterly and semi-weekly depositors.
+- [ ] **Annual Oregon filings**: the withholding reconciliation (OR-WR) and the Form 132 hours column.
+- [ ] **Current-year form checks**: update the box numbers when the Department of Revenue and Employment Department change the forms.
+
+**Federal**
+- [ ] **Federal income tax withholding**: its own payable account, Form 941 line 3, and the Form 941 deposit schedule.
+- [ ] **Additional Medicare Tax** (Form 941 line 5d) and semi-weekly depositors (Schedule B).
+- [ ] **Year-end**: W-2 and W-3 totals checked against the ledger.
+
+**Extension**
+- [ ] Rates and wage caps in one table per year, so a new year is a one-line change.
+- [ ] Printable and exportable worksheets (CSV).
+- [ ] Better messages when an expected payable account is missing.
+
 ## License
 
-MIT, see [LICENSE](../LICENSE). Copyright (c) 2026 Two Sisters Nightmare, LLC.
+MIT, see [LICENSE](LICENSE). Copyright (c) 2026 Two Sisters Nightmare, LLC.
